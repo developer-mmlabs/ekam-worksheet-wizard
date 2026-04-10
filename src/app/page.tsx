@@ -113,6 +113,21 @@ export default function GeneratePage() {
         }),
       });
 
+      if (!response.ok) {
+        if (response.status === 504) {
+          throw new Error("Request timed out. Try reducing the number of questions.");
+        }
+        // Try to parse JSON error, fall back to status text
+        let message = `Server error (${response.status})`;
+        try {
+          const errBody = await response.json();
+          if (errBody.error) message = errBody.error;
+        } catch {
+          // Response wasn't JSON
+        }
+        throw new Error(message);
+      }
+
       const result = await response.json();
 
       if (!result.success) {

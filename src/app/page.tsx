@@ -247,9 +247,10 @@ export default function GeneratePage() {
                       </label>
                       <input
                         type="number"
-                        value={mcqCount}
+                        value={mcqCount || ""}
                         min={QUESTION_COUNT_MINS.mcq}
-                        onChange={(e) => setMcqCount(Math.max(QUESTION_COUNT_MINS.mcq, parseInt(e.target.value) || QUESTION_COUNT_MINS.mcq))}
+                        onChange={(e) => setMcqCount(parseInt(e.target.value) || 0)}
+                        onBlur={() => setMcqCount((v) => Math.max(QUESTION_COUNT_MINS.mcq, v))}
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
@@ -259,9 +260,10 @@ export default function GeneratePage() {
                       </label>
                       <input
                         type="number"
-                        value={veryShortCount}
+                        value={veryShortCount || ""}
                         min={QUESTION_COUNT_MINS.veryShort}
-                        onChange={(e) => setVeryShortCount(Math.max(QUESTION_COUNT_MINS.veryShort, parseInt(e.target.value) || QUESTION_COUNT_MINS.veryShort))}
+                        onChange={(e) => setVeryShortCount(parseInt(e.target.value) || 0)}
+                        onBlur={() => setVeryShortCount((v) => Math.max(QUESTION_COUNT_MINS.veryShort, v))}
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
@@ -271,9 +273,10 @@ export default function GeneratePage() {
                       </label>
                       <input
                         type="number"
-                        value={shortAnswerCount}
+                        value={shortAnswerCount || ""}
                         min={QUESTION_COUNT_MINS.shortAnswer}
-                        onChange={(e) => setShortAnswerCount(Math.max(QUESTION_COUNT_MINS.shortAnswer, parseInt(e.target.value) || QUESTION_COUNT_MINS.shortAnswer))}
+                        onChange={(e) => setShortAnswerCount(parseInt(e.target.value) || 0)}
+                        onBlur={() => setShortAnswerCount((v) => Math.max(QUESTION_COUNT_MINS.shortAnswer, v))}
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
@@ -283,9 +286,10 @@ export default function GeneratePage() {
                       </label>
                       <input
                         type="number"
-                        value={longAnswerCount}
+                        value={longAnswerCount || ""}
                         min={QUESTION_COUNT_MINS.longAnswer}
-                        onChange={(e) => setLongAnswerCount(Math.max(QUESTION_COUNT_MINS.longAnswer, parseInt(e.target.value) || QUESTION_COUNT_MINS.longAnswer))}
+                        onChange={(e) => setLongAnswerCount(parseInt(e.target.value) || 0)}
+                        onBlur={() => setLongAnswerCount((v) => Math.max(QUESTION_COUNT_MINS.longAnswer, v))}
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>

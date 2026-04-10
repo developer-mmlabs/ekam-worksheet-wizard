@@ -77,6 +77,31 @@ CREATE INDEX IF NOT EXISTS idx_worksheets_chapter ON worksheets(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_worksheets_status ON worksheets(status);
 `;
 
+// Migration SQL for existing databases (ALTER TABLE is idempotent with IF NOT EXISTS)
+const MIGRATION_SQL = `
+-- Add status and error_message columns to worksheets (for async generation)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'worksheets' AND column_name = 'status'
+  ) THEN
+    ALTER TABLE worksheets ADD COLUMN status TEXT NOT NULL DEFAULT 'completed';
+    ALTER TABLE worksheets ADD CONSTRAINT worksheets_status_check
+      CHECK (status IN ('pending', 'processing', 'completed', 'failed'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'worksheets' AND column_name = 'error_message'
+  ) THEN
+    ALTER TABLE worksheets ADD COLUMN error_message TEXT;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_worksheets_status ON worksheets(status);
+`;
+
 // Seed grades data
 const SEED_GRADES_SQL = `
 INSERT INTO grades (number, name, band) VALUES
@@ -140,6 +165,16 @@ export async function POST() {
       }
     }
 
+    // Step 2b: Run migrations (safe to run on existing databases)
+    const { error: migrationError } = await supabaseAdmin.rpc("exec_sql", {
+      query: MIGRATION_SQL,
+    });
+    if (migrationError) {
+      results.push(`Migrations: ${migrationError.message}`);
+    } else {
+      results.push("Migrations: OK");
+    }
+
     // Step 3: Insert default school (only if none exists)
     const { data: existingSchools } = await supabaseAdmin
       .from("schools")
@@ -200,6 +235,26 @@ ${SEED_GRADES_SQL}
 INSERT INTO schools (name, primary_color, secondary_color, location, academic_year)
 VALUES ('EKAM INSTITUTIONS', '#0ea5e9', '#0369a1', 'E-CITY, BENGALURU', '2026-27')
 ON CONFLICT DO NOTHING;
+
+-- Migrations for existing databases
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'worksheets' AND column_name = 'status'
+  ) THEN
+    ALTER TABLE worksheets ADD COLUMN status TEXT NOT NULL DEFAULT 'completed';
+    ALTER TABLE worksheets ADD CONSTRAINT worksheets_status_check
+      CHECK (status IN ('pending', 'processing', 'completed', 'failed'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'worksheets' AND column_name = 'error_message'
+  ) THEN
+    ALTER TABLE worksheets ADD COLUMN error_message TEXT;
+  END IF;
+END $$;
 
 -- Enable RLS (but allow all access for now - add proper policies in production)
 ALTER TABLE schools ENABLE ROW LEVEL SECURITY;

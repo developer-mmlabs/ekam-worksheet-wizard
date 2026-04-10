@@ -79,12 +79,12 @@ export default function GeneratePage() {
       }
     }, 3000);
 
-    // Safety: stop polling after 3 minutes
+    // Safety: stop polling after 10 minutes (Inngest handles long-running jobs)
     timeoutRef.current = setTimeout(() => {
       stopPolling();
-      setError("Generation timed out. Check the admin dashboard for your worksheet.");
+      setError("Generation is taking longer than expected. Check the admin dashboard for your worksheet.");
       setGenerating(false);
-    }, 180_000);
+    }, 600_000);
   }
 
   // Load grades on mount
@@ -271,7 +271,7 @@ export default function GeneratePage() {
               </option>
               {chapters.map((c) => (
                 <option key={c.id} value={c.id}>
-                  Chapter {c.number}: {c.name}
+                  Ch {c.number}: {c.name}
                 </option>
               ))}
             </select>
@@ -388,28 +388,31 @@ export default function GeneratePage() {
             </div>
           )}
 
-          {/* Download */}
+          {/* PDF Preview & Download */}
           {pdfUrl && (
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg space-y-3">
-              <p className="text-sm font-medium text-green-700">
-                Worksheet generated successfully!
-              </p>
-              <div className="flex gap-3">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-green-700">
+                  Worksheet generated successfully!
+                </p>
                 <a
                   href={pdfUrl}
-                  download={`worksheet-${Date.now()}.pdf`}
-                  className="inline-flex items-center gap-2 bg-green-600 text-white font-medium py-2 px-4 rounded-lg hover:bg-green-700 transition-colors"
+                  download
+                  className="inline-flex items-center gap-2 bg-green-600 text-white font-medium py-2 px-4 rounded-lg hover:bg-green-700 transition-colors text-sm"
                 >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
                   <span>Download PDF</span>
                 </a>
-                <a
-                  href={pdfUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 bg-white text-green-700 border border-green-300 font-medium py-2 px-4 rounded-lg hover:bg-green-50 transition-colors"
-                >
-                  <span>Preview</span>
-                </a>
+              </div>
+              <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-100">
+                <iframe
+                  src={pdfUrl}
+                  className="w-full"
+                  style={{ height: "80vh" }}
+                  title="Worksheet Preview"
+                />
               </div>
             </div>
           )}

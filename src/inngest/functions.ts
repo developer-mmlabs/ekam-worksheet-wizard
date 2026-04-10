@@ -1,0 +1,157 @@
+import { inngest } from "./client";
+import { supabaseAdmin } from "@/lib/supabase/server";
+import { generateQuestions } from "@/lib/ai/question-generator";
+import { generateWorksheetPDF } from "@/lib/pdf/generator";
+import { getTheme } from "@/lib/pdf/templates/themes";
+import type { Grade, Subject, Chapter, School, GradeBand, QuestionCounts } from "@/types";
+import { QUESTION_COUNT_DEFAULTS } from "@/types";
+
+export const processWorksheet = inngest.createFunction(
+  { id: "process-worksheet", triggers: [{ event: "worksheet/generate.requested" }] },
+  async ({ event, step }) => {
+    const { worksheetId, chapterId, schoolId, questionCounts } = event.data;
+    const counts: QuestionCounts = { ...QUESTION_COUNT_DEFAULTS, ...questionCounts };
+
+    // Step 1: Mark as processing and load all metadata
+    const metadata = await step.run("load-metadata", async () => {
+      await supabaseAdmin
+        .from("worksheets")
+        .update({ status: "processing" })
+        .eq("id", worksheetId);
+
+      const { data: chapter, error: chapterError } = await supabaseAdmin
+        .from("chapters")
+        .select("*, subject:subjects(*, grade:grades(*))")
+        .eq("id", chapterId)
+        .single();
+
+      if (chapterError || !chapter) throw new Error("Chapter not found");
+
+      const { data: school, error: schoolError } = await supabaseAdmin
+        .from("schools")
+        .select("*")
+        .eq("id", schoolId)
+        .single();
+
+      if (schoolError || !school) throw new Error("School not found");
+
+      const { data: materials } = await supabaseAdmin
+        .from("source_materials")
+        .select("*")
+        .eq("chapter_id", chapterId)
+        .order("type")
+        .order("page_number");
+
+      if (!materials || materials.length === 0) {
+        throw new Error("No source materials found for this chapter.");
+      }
+
+      return { chapter, school, materials };
+    });
+
+    // Step 2: Download images and convert to base64
+    const imageBase64s = await step.run("download-images", async () => {
+      const images: string[] = [];
+      for (const material of metadata.materials) {
+        try {
+          const response = await fetch(material.file_url as string);
+          if (response.ok) {
+            const buffer = await response.arrayBuffer();
+            const base64 = Buffer.from(buffer).toString("base64");
+            images.push(base64);
+          }
+        } catch (e) {
+          console.warn(`Failed to fetch image: ${material.file_url}`, e);
+        }
+      }
+
+      if (images.length === 0) {
+        throw new Error("Could not load any source material images.");
+      }
+
+      return images;
+    });
+
+    // Step 3: Generate questions via AI (the long-running part)
+    const { chapter, school } = metadata;
+    const subjectData = chapter.subject as unknown as Subject & { grade: Grade };
+    const gradeData = subjectData.grade;
+
+    const questions = await step.run("generate-questions", async () => {
+      return await generateQuestions(
+        imageBase64s,
+        gradeData.name,
+        subjectData.name,
+        chapter.name as string,
+        counts,
+      );
+    });
+
+    // Step 4: Generate PDF
+    const pdfBuffer = await step.run("generate-pdf", async () => {
+      const theme = getTheme(gradeData.band as GradeBand, subjectData.slug, {
+        primary: (school as School).primary_color,
+        secondary: (school as School).secondary_color,
+      });
+
+      const { count } = await supabaseAdmin
+        .from("worksheets")
+        .select("id", { count: "exact", head: true })
+        .eq("chapter_id", chapterId);
+
+      const worksheetNumber = count || 1;
+
+      const buffer = await generateWorksheetPDF({
+        school: school as School,
+        grade: gradeData as Grade,
+        subject: subjectData as Subject,
+        chapter: chapter as unknown as Chapter,
+        questions,
+        worksheetNumber,
+        theme,
+      });
+
+      // Return as base64 string so it can be serialized between steps
+      return {
+        base64: Buffer.from(buffer).toString("base64"),
+        worksheetNumber,
+      };
+    });
+
+    // Step 5: Upload PDF and mark completed
+    await step.run("upload-and-complete", async () => {
+      const buffer = Buffer.from(pdfBuffer.base64, "base64");
+      const worksheetNumber = pdfBuffer.worksheetNumber;
+
+      const gradeName = gradeData.name.replace(/\s+/g, "-");
+      const subjectSlug = subjectData.slug;
+      const chapterLabel = `Ch${chapter.number}-${(chapter.name as string).replace(/[^a-zA-Z0-9]+/g, "-").replace(/-+$/, "")}`;
+      const timestamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
+      const pdfPath = `${schoolId}/${gradeName}/${subjectSlug}/${chapterLabel}-WS${worksheetNumber}-${timestamp}.pdf`;
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("worksheets")
+        .upload(pdfPath, buffer, { contentType: "application/pdf" });
+
+      let pdfUrl: string | null = null;
+      if (!uploadError) {
+        const { data: { publicUrl } } = supabaseAdmin.storage
+          .from("worksheets")
+          .getPublicUrl(pdfPath);
+        pdfUrl = publicUrl;
+      }
+
+      await supabaseAdmin
+        .from("worksheets")
+        .update({
+          status: "completed",
+          pdf_url: pdfUrl,
+          questions_json: questions,
+          page_count: Math.min(4, Math.ceil(questions.metadata.totalQuestions / 8)),
+        })
+        .eq("id", worksheetId);
+    });
+
+    return { worksheetId, status: "completed" };
+  },
+);

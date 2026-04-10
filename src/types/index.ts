@@ -50,6 +50,8 @@ export interface SourceMaterial {
   created_at: string;
 }
 
+export type WorksheetStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
 export interface Worksheet {
   id: string;
   chapter_id: string;
@@ -57,6 +59,8 @@ export interface Worksheet {
   pdf_url: string | null;
   questions_json: WorksheetQuestions;
   page_count: number;
+  status: WorksheetStatus;
+  error_message: string | null;
   created_at: string;
 }
 
@@ -162,11 +166,17 @@ export interface GenerateRequest {
 
 export interface GenerateResponse {
   success: boolean;
-  pdfUrl?: string;
-  pdfBase64?: string;
+  worksheetId?: string;
   error?: string;
-  questionCount?: number;
-  pageCount?: number;
+}
+
+export interface WorksheetStatusResponse {
+  id: string;
+  status: WorksheetStatus;
+  pdfUrl: string | null;
+  errorMessage: string | null;
+  questionCount: number | null;
+  pageCount: number | null;
 }
 
 export interface UploadRequest {

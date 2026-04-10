@@ -62,7 +62,9 @@ CREATE TABLE IF NOT EXISTS worksheets (
   school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
   pdf_url TEXT,
   questions_json JSONB NOT NULL DEFAULT '{}',
-  page_count INTEGER NOT NULL DEFAULT 3,
+  page_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+  error_message TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -71,6 +73,7 @@ CREATE INDEX IF NOT EXISTS idx_subjects_grade ON subjects(grade_id);
 CREATE INDEX IF NOT EXISTS idx_chapters_subject ON chapters(subject_id);
 CREATE INDEX IF NOT EXISTS idx_source_materials_chapter ON source_materials(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_worksheets_chapter ON worksheets(chapter_id);
+CREATE INDEX IF NOT EXISTS idx_worksheets_status ON worksheets(status);
 
 -- Seed grades
 INSERT INTO grades (number, name, band) VALUES

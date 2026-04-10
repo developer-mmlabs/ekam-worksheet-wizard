@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
-import type { Grade, Subject, Chapter } from "@/types";
+import type { Grade, Subject, Chapter, WorksheetStatus } from "@/types";
 import { QUESTION_COUNT_DEFAULTS, QUESTION_COUNT_MINS } from "@/types";
 
 export default function GeneratePage() {
@@ -22,11 +22,70 @@ export default function GeneratePage() {
 
   const totalQuestions = mcqCount + veryShortCount + shortAnswerCount + longAnswerCount;
 
-  const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  function pollForCompletion(worksheetId: string) {
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/generate/status?id=${worksheetId}`);
+        if (!res.ok) return; // retry on next tick
+
+        const data = await res.json();
+        const status: WorksheetStatus = data.status;
+
+        if (status === "processing") {
+          setProgress("AI is generating your worksheet...");
+        }
+
+        if (status === "completed") {
+          stopPolling();
+          setPdfUrl(data.pdfUrl);
+          setProgress("Worksheet ready!");
+          setGenerating(false);
+        }
+
+        if (status === "failed") {
+          stopPolling();
+          setError(data.errorMessage || "Generation failed");
+          setGenerating(false);
+        }
+      } catch {
+        // Network error — keep polling
+      }
+    }, 3000);
+
+    // Safety: stop polling after 3 minutes
+    timeoutRef.current = setTimeout(() => {
+      stopPolling();
+      setError("Generation timed out. Check the admin dashboard for your worksheet.");
+      setGenerating(false);
+    }, 180_000);
+  }
 
   // Load grades on mount
   useEffect(() => {
@@ -82,7 +141,7 @@ export default function GeneratePage() {
     setGenerating(true);
     setError(null);
     setPdfUrl(null);
-    setProgress("Reading source materials...");
+    setProgress("Submitting generation request...");
 
     try {
       // Get school (most recently updated)
@@ -96,8 +155,7 @@ export default function GeneratePage() {
         throw new Error("No school configured. Go to Admin > Settings first.");
       }
 
-      setProgress("Generating questions with AI (this takes 30-60 seconds)...");
-
+      // Submit generation request (returns immediately)
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -114,10 +172,6 @@ export default function GeneratePage() {
       });
 
       if (!response.ok) {
-        if (response.status === 504) {
-          throw new Error("Request timed out. Try reducing the number of questions.");
-        }
-        // Try to parse JSON error, fall back to status text
         let message = `Server error (${response.status})`;
         try {
           const errBody = await response.json();
@@ -130,29 +184,17 @@ export default function GeneratePage() {
 
       const result = await response.json();
 
-      if (!result.success) {
+      if (!result.success || !result.worksheetId) {
         throw new Error(result.error || "Generation failed");
       }
 
-      setProgress("Worksheet ready!");
+      setProgress("Generating questions with AI (this may take up to 2 minutes)...");
 
-      if (result.pdfBase64) {
-        // Create download URL from base64
-        const byteCharacters = atob(result.pdfBase64);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-        setPdfUrl(url);
-      } else if (result.pdfUrl) {
-        setPdfUrl(result.pdfUrl);
-      }
+      // Start polling for completion
+      pollForCompletion(result.worksheetId);
+
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
       setGenerating(false);
     }
   }

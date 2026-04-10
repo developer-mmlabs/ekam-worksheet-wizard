@@ -3,14 +3,19 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { generateQuestions } from "@/lib/ai/question-generator";
 import { generateWorksheetPDF } from "@/lib/pdf/generator";
 import { getTheme } from "@/lib/pdf/templates/themes";
-import type { GenerateRequest, Grade, Subject, Chapter, School, GradeBand } from "@/types";
+import type { GenerateRequest, Grade, Subject, Chapter, School, GradeBand, QuestionCounts } from "@/types";
+import { QUESTION_COUNT_DEFAULTS } from "@/types";
 
 export const maxDuration = 120; // Allow up to 2 minutes for AI generation
 
 export async function POST(req: NextRequest) {
   try {
     const body: GenerateRequest = await req.json();
-    const { chapterId, schoolId } = body;
+    const { chapterId, schoolId, questionCounts } = body;
+    const counts: QuestionCounts = {
+      ...QUESTION_COUNT_DEFAULTS,
+      ...questionCounts,
+    };
 
     if (!chapterId || !schoolId) {
       return NextResponse.json({ success: false, error: "chapterId and schoolId are required" }, { status: 400 });
@@ -82,7 +87,8 @@ export async function POST(req: NextRequest) {
       imageBase64s,
       gradeData.name,
       subjectData.name,
-      chapter.name as string
+      chapter.name as string,
+      counts
     );
 
     // 5. Build theme using school's configured colors

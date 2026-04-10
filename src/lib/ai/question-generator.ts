@@ -1,10 +1,14 @@
 import { callLLM, createImageContent, createTextContent } from "@/lib/openrouter";
-import { WorksheetQuestions } from "@/types";
+import { WorksheetQuestions, QuestionCounts, QUESTION_COUNT_DEFAULTS } from "@/types";
 
-const SYSTEM_PROMPT = `You are an expert educational worksheet creator for Indian schools (CBSE/ICSE curriculum). Your job is to generate high-quality worksheet questions from textbook content and previous question papers.
+function buildSystemPrompt(counts: QuestionCounts): string {
+  const total = counts.mcq + counts.veryShort + counts.shortAnswer + counts.longAnswer;
+  const aimFor = Math.ceil(total * 1.1);
+
+  return `You are an expert educational worksheet creator for Indian schools (CBSE/ICSE curriculum). Your job is to generate high-quality worksheet questions from textbook content and previous question papers.
 
 CRITICAL RULES:
-1. Generate a MINIMUM of 25 questions across all sections
+1. Generate a MINIMUM of ${total} questions across all sections
 2. Questions must be directly derived from the provided textbook content and question papers
 3. Cover the full breadth of the chapter - don't cluster questions from just one topic
 4. Questions should progress from simple recall to application and analysis
@@ -83,18 +87,20 @@ The JSON schema:
 }
 
 SECTION REQUIREMENTS:
-- Section A (MCQ): Minimum 12 questions, 4 options each, 1 mark each
-- Section B (Very Short Answer): Minimum 8 questions, 1 mark each
-- Section C (Short Answer): Minimum 6 questions, 3 marks each
-- Section D (Long Answer / Numerical): Minimum 4 questions, 5 marks each, with subparts
+- Section A (MCQ): Exactly ${counts.mcq} questions, 4 options each, 1 mark each
+- Section B (Very Short Answer): Exactly ${counts.veryShort} questions, 1 mark each
+- Section C (Short Answer): Exactly ${counts.shortAnswer} questions, 3 marks each
+- Section D (Long Answer / Numerical): Exactly ${counts.longAnswer} questions, 5 marks each, with subparts
 
-Total minimum: 30 questions. Aim for 32-36 for comprehensive coverage.`;
+Total: ${total} questions. Aim for up to ${aimFor} for comprehensive coverage.`;
+}
 
 export async function generateQuestions(
   imageBase64s: string[],
   gradeName: string,
   subjectName: string,
-  chapterName: string
+  chapterName: string,
+  questionCounts: QuestionCounts = QUESTION_COUNT_DEFAULTS
 ): Promise<WorksheetQuestions> {
   // Build the message content with all images
   const contentParts = [];
@@ -120,14 +126,16 @@ export async function generateQuestions(
     );
   }
 
+  const requestedTotal = questionCounts.mcq + questionCounts.veryShort + questionCounts.shortAnswer + questionCounts.longAnswer;
+
   contentParts.push(
     createTextContent(
-      "\nNow generate the worksheet JSON. Remember: minimum 30 questions, valid JSON only, no markdown fences."
+      `\nNow generate the worksheet JSON. Remember: ${requestedTotal} questions total, valid JSON only, no markdown fences.`
     )
   );
 
   const response = await callLLM([
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: buildSystemPrompt(questionCounts) },
     { role: "user", content: contentParts },
   ]);
 
@@ -141,8 +149,9 @@ export async function generateQuestions(
 
   // Validate minimum question count
   const totalQuestions = questions.sections.reduce((sum, section) => sum + section.questions.length, 0);
-  if (totalQuestions < 25) {
-    console.warn(`Warning: Only ${totalQuestions} questions generated (minimum 25 required)`);
+  const minimumExpected = Math.floor(requestedTotal * 0.8);
+  if (totalQuestions < minimumExpected) {
+    console.warn(`Warning: Only ${totalQuestions} questions generated (expected at least ${minimumExpected})`);
   }
 
   // Update metadata

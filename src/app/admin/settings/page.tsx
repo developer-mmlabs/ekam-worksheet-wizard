@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase/client";
 import type { School } from "@/types";
 
 export default function SettingsPage() {
@@ -20,15 +19,18 @@ export default function SettingsPage() {
 
   useEffect(() => {
     async function loadSchool() {
-      const { data } = await supabase.from("schools").select("*").limit(1).single();
-      if (data) {
-        setSchool(data);
-        setName(data.name);
-        setLocation(data.location);
-        setPrimaryColor(data.primary_color);
-        setSecondaryColor(data.secondary_color);
-        setAcademicYear(data.academic_year);
-        if (data.logo_url) setLogoPreview(data.logo_url);
+      const res = await fetch("/api/school-settings");
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.id) {
+          setSchool(data);
+          setName(data.name);
+          setLocation(data.location);
+          setPrimaryColor(data.primary_color);
+          setSecondaryColor(data.secondary_color);
+          setAcademicYear(data.academic_year);
+          if (data.logo_url) setLogoPreview(data.logo_url);
+        }
       }
       setLoading(false);
     }
@@ -52,39 +54,44 @@ export default function SettingsPage() {
 
       // Upload logo if changed
       if (logoFile) {
-        const filePath = `logos/${Date.now()}-${logoFile.name}`;
-        const { error: uploadError } = await supabase.storage
-          .from("school-assets")
-          .upload(filePath, logoFile);
+        const formData = new FormData();
+        formData.append("file", logoFile);
 
-        if (uploadError) throw uploadError;
+        const uploadRes = await fetch("/api/school-settings", {
+          method: "POST",
+          body: formData,
+        });
 
-        const { data: { publicUrl } } = supabase.storage
-          .from("school-assets")
-          .getPublicUrl(filePath);
+        if (!uploadRes.ok) {
+          const { error } = await uploadRes.json();
+          throw new Error(error || "Logo upload failed");
+        }
 
+        const { publicUrl } = await uploadRes.json();
         logoUrl = publicUrl;
       }
 
-      const updates = {
-        name,
-        location,
-        primary_color: primaryColor,
-        secondary_color: secondaryColor,
-        academic_year: academicYear,
-        logo_url: logoUrl,
-        updated_at: new Date().toISOString(),
-      };
+      const res = await fetch("/api/school-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: school?.id,
+          name,
+          location,
+          primary_color: primaryColor,
+          secondary_color: secondaryColor,
+          academic_year: academicYear,
+          logo_url: logoUrl,
+        }),
+      });
 
-      if (school) {
-        const { error } = await supabase.from("schools").update(updates).eq("id", school.id);
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase.from("schools").insert(updates).select().single();
-        if (error) throw error;
-        setSchool(data);
+      if (!res.ok) {
+        const { error } = await res.json();
+        throw new Error(error || "Save failed");
       }
 
+      const data = await res.json();
+      setSchool(data);
       setMessage("Settings saved successfully!");
     } catch (err) {
       setMessage(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);

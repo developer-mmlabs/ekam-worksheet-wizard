@@ -126,12 +126,38 @@ export interface WorksheetPDFData {
 }
 
 // ============================================================
+// Question Count Configuration
+// ============================================================
+
+export interface QuestionCounts {
+  mcq: number;
+  veryShort: number;
+  shortAnswer: number;
+  longAnswer: number;
+}
+
+export const QUESTION_COUNT_DEFAULTS: QuestionCounts = {
+  mcq: 12,
+  veryShort: 8,
+  shortAnswer: 6,
+  longAnswer: 4,
+};
+
+export const QUESTION_COUNT_MINS: QuestionCounts = {
+  mcq: 8,
+  veryShort: 5,
+  shortAnswer: 3,
+  longAnswer: 2,
+};
+
+// ============================================================
 // API Types
 // ============================================================
 
 export interface GenerateRequest {
   chapterId: string;
   schoolId: string;
+  questionCounts?: QuestionCounts;
 }
 
 export interface GenerateResponse {

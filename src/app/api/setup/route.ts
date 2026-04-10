@@ -137,26 +137,32 @@ export async function POST() {
       }
     }
 
-    // Step 3: Insert default school
-    const { error: schoolError } = await supabaseAdmin
+    // Step 3: Insert default school (only if none exists)
+    const { data: existingSchools } = await supabaseAdmin
       .from("schools")
-      .upsert(
-        {
+      .select("id")
+      .limit(1);
+
+    if (!existingSchools || existingSchools.length === 0) {
+      const { error: schoolError } = await supabaseAdmin
+        .from("schools")
+        .insert({
           name: "EKAM INSTITUTIONS",
           primary_color: "#0ea5e9",
           secondary_color: "#0369a1",
           location: "E-CITY, BENGALURU",
           academic_year: "2026-27",
-        },
-        { onConflict: "id" }
-      )
-      .select()
-      .single();
+        })
+        .select()
+        .single();
 
-    if (schoolError) {
-      results.push(`Default school: ${schoolError.message} (run schema SQL first)`);
+      if (schoolError) {
+        results.push(`Default school: ${schoolError.message} (run schema SQL first)`);
+      } else {
+        results.push("Default school: Created");
+      }
     } else {
-      results.push("Default school: OK");
+      results.push("Default school: Already exists, skipped");
     }
 
     return NextResponse.json({ success: true, results });

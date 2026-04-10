@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase/client";
 import type { Grade, Subject, Chapter } from "@/types";
+import { QUESTION_COUNT_DEFAULTS, QUESTION_COUNT_MINS } from "@/types";
 
 export default function GeneratePage() {
   const [grades, setGrades] = useState<Grade[]>([]);
@@ -12,6 +13,14 @@ export default function GeneratePage() {
   const [selectedGrade, setSelectedGrade] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedChapter, setSelectedChapter] = useState("");
+
+  const [mcqCount, setMcqCount] = useState(QUESTION_COUNT_DEFAULTS.mcq);
+  const [veryShortCount, setVeryShortCount] = useState(QUESTION_COUNT_DEFAULTS.veryShort);
+  const [shortAnswerCount, setShortAnswerCount] = useState(QUESTION_COUNT_DEFAULTS.shortAnswer);
+  const [longAnswerCount, setLongAnswerCount] = useState(QUESTION_COUNT_DEFAULTS.longAnswer);
+  const [showOptions, setShowOptions] = useState(false);
+
+  const totalQuestions = mcqCount + veryShortCount + shortAnswerCount + longAnswerCount;
 
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -76,14 +85,14 @@ export default function GeneratePage() {
     setProgress("Reading source materials...");
 
     try {
-      // Get school (first one)
-      const { data: school } = await supabase
-        .from("schools")
-        .select("id")
-        .limit(1)
-        .single();
+      // Get school (most recently updated)
+      const schoolRes = await fetch("/api/school-settings");
+      if (!schoolRes.ok) {
+        throw new Error("No school configured. Go to Admin > Settings first.");
+      }
+      const school = await schoolRes.json();
 
-      if (!school) {
+      if (!school?.id) {
         throw new Error("No school configured. Go to Admin > Settings first.");
       }
 
@@ -95,6 +104,12 @@ export default function GeneratePage() {
         body: JSON.stringify({
           chapterId: selectedChapter,
           schoolId: school.id,
+          questionCounts: {
+            mcq: mcqCount,
+            veryShort: veryShortCount,
+            shortAnswer: shortAnswerCount,
+            longAnswer: longAnswerCount,
+          },
         }),
       });
 
@@ -204,6 +219,89 @@ export default function GeneratePage() {
               ))}
             </select>
           </div>
+
+          {/* Question Options */}
+          {selectedChapter && (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowOptions(!showOptions)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <span>Question Options ({totalQuestions} questions)</span>
+                <svg
+                  className={`w-4 h-4 transition-transform ${showOptions ? "rotate-180" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showOptions && (
+                <div className="p-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        MCQ (1 mark each)
+                      </label>
+                      <input
+                        type="number"
+                        value={mcqCount}
+                        min={QUESTION_COUNT_MINS.mcq}
+                        onChange={(e) => setMcqCount(Math.max(QUESTION_COUNT_MINS.mcq, parseInt(e.target.value) || QUESTION_COUNT_MINS.mcq))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Very Short Answer (1 mark each)
+                      </label>
+                      <input
+                        type="number"
+                        value={veryShortCount}
+                        min={QUESTION_COUNT_MINS.veryShort}
+                        onChange={(e) => setVeryShortCount(Math.max(QUESTION_COUNT_MINS.veryShort, parseInt(e.target.value) || QUESTION_COUNT_MINS.veryShort))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Short Answer (3 marks each)
+                      </label>
+                      <input
+                        type="number"
+                        value={shortAnswerCount}
+                        min={QUESTION_COUNT_MINS.shortAnswer}
+                        onChange={(e) => setShortAnswerCount(Math.max(QUESTION_COUNT_MINS.shortAnswer, parseInt(e.target.value) || QUESTION_COUNT_MINS.shortAnswer))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Long Answer (5 marks each)
+                      </label>
+                      <input
+                        type="number"
+                        value={longAnswerCount}
+                        min={QUESTION_COUNT_MINS.longAnswer}
+                        onChange={(e) => setLongAnswerCount(Math.max(QUESTION_COUNT_MINS.longAnswer, parseInt(e.target.value) || QUESTION_COUNT_MINS.longAnswer))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+                    <span className="text-sm font-medium text-gray-700">
+                      Total: {totalQuestions} questions
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {mcqCount * 1 + veryShortCount * 1 + shortAnswerCount * 3 + longAnswerCount * 5} marks
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Generate button */}
           <button

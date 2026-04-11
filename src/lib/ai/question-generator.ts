@@ -1,9 +1,120 @@
 import { callLLM, createImageContent, createTextContent } from "@/lib/openrouter";
 import { WorksheetQuestions, QuestionCounts, QUESTION_COUNT_DEFAULTS } from "@/types";
 
+interface SectionDef {
+  type: string;
+  title: string;
+  count: number;
+  requirement: string;
+  schemaExample: string;
+}
+
 function buildSystemPrompt(counts: QuestionCounts): string {
-  const total = counts.mcq + counts.veryShort + counts.shortAnswer + counts.longAnswer;
+  const allSections: SectionDef[] = [
+    {
+      type: "mcq",
+      title: "Multiple Choice Questions",
+      count: counts.mcq,
+      requirement: `${counts.mcq} questions, 4 options each, 1 mark each`,
+      schemaExample: `{
+          "number": 1,
+          "text": "question text",
+          "marks": 1,
+          "options": [
+            {"label": "a", "text": "option text"},
+            {"label": "b", "text": "option text"},
+            {"label": "c", "text": "option text"},
+            {"label": "d", "text": "option text"}
+          ]
+        }`,
+    },
+    {
+      type: "fill_in_the_blanks",
+      title: "Fill in the Blanks",
+      count: counts.fillInTheBlanks,
+      requirement: `${counts.fillInTheBlanks} questions, 1 mark each. Use "______" (six underscores) in the sentence where the blank goes`,
+      schemaExample: `{
+          "number": 1,
+          "text": "The process of ______ converts light energy into chemical energy.",
+          "marks": 1
+        }`,
+    },
+    {
+      type: "match_the_following",
+      title: "Match the Following",
+      count: counts.matchTheFollowing,
+      requirement: `${counts.matchTheFollowing} questions, each with 4-5 pairs, marks = number of pairs`,
+      schemaExample: `{
+          "number": 1,
+          "text": "Match the items in Column A with Column B",
+          "marks": 4,
+          "matchPairs": [
+            {"left": "Item A1", "right": "Item B1"},
+            {"left": "Item A2", "right": "Item B2"},
+            {"left": "Item A3", "right": "Item B3"},
+            {"left": "Item A4", "right": "Item B4"}
+          ]
+        }`,
+    },
+    {
+      type: "very_short",
+      title: "Very Short Answer Questions",
+      count: counts.veryShort,
+      requirement: `${counts.veryShort} questions, 1 mark each`,
+      schemaExample: `{
+          "number": 1,
+          "text": "question text",
+          "marks": 1
+        }`,
+    },
+    {
+      type: "short_answer",
+      title: "Short Answer Questions",
+      count: counts.shortAnswer,
+      requirement: `${counts.shortAnswer} questions, 3 marks each`,
+      schemaExample: `{
+          "number": 1,
+          "text": "question text",
+          "marks": 3
+        }`,
+    },
+    {
+      type: "long_answer",
+      title: "Long Answer / Numerical Questions",
+      count: counts.longAnswer,
+      requirement: `${counts.longAnswer} questions, 5 marks each, with subparts`,
+      schemaExample: `{
+          "number": 1,
+          "text": "question text",
+          "marks": 5,
+          "subparts": ["part a text", "part b text"]
+        }`,
+    },
+  ];
+
+  const sections = allSections
+    .filter((s) => s.count > 0)
+    .map((s, i) => ({ ...s, id: String.fromCharCode(65 + i) }));
+
+  const total = sections.reduce((sum, s) => sum + s.count, 0);
   const aimFor = Math.ceil(total * 1.1);
+
+  const schemaStr = sections
+    .map(
+      (s) => `    {
+      "id": "${s.id}",
+      "title": "${s.title}",
+      "type": "${s.type}",
+      "questions": [
+        ${s.schemaExample}
+      ]
+    }`
+    )
+    .join(",\n");
+
+  const requirementsStr = sections
+    .map((s) => `- Section ${s.id} (${s.title}): Exactly ${s.requirement}`)
+    .join("\n");
 
   return `You are an expert educational worksheet creator for Indian schools (CBSE/ICSE curriculum). Your job is to generate high-quality worksheet questions from textbook content and previous question papers.
 
@@ -16,6 +127,8 @@ CRITICAL RULES:
 6. Keep question text concise and clear - suitable for compressed worksheet layout
 7. Include numerical/calculation questions where applicable
 8. Include diagram-based questions where the chapter content involves visual concepts
+9. For Fill in the Blanks, use "______" (six underscores) to indicate the blank within a complete sentence
+10. For Match the Following, provide exactly 4-5 pairs per question with shuffled right-column items
 
 OUTPUT FORMAT: You must respond with ONLY valid JSON (no markdown, no code fences, no explanation).
 
@@ -28,69 +141,12 @@ The JSON schema:
     "totalQuestions": number
   },
   "sections": [
-    {
-      "id": "A",
-      "title": "Multiple Choice Questions",
-      "type": "mcq",
-      "questions": [
-        {
-          "number": 1,
-          "text": "question text",
-          "marks": 1,
-          "options": [
-            {"label": "a", "text": "option text"},
-            {"label": "b", "text": "option text"},
-            {"label": "c", "text": "option text"},
-            {"label": "d", "text": "option text"}
-          ]
-        }
-      ]
-    },
-    {
-      "id": "B",
-      "title": "Very Short Answer Questions",
-      "type": "very_short",
-      "questions": [
-        {
-          "number": 1,
-          "text": "question text",
-          "marks": 1
-        }
-      ]
-    },
-    {
-      "id": "C",
-      "title": "Short Answer Questions",
-      "type": "short_answer",
-      "questions": [
-        {
-          "number": 1,
-          "text": "question text",
-          "marks": 3
-        }
-      ]
-    },
-    {
-      "id": "D",
-      "title": "Long Answer / Numerical Questions",
-      "type": "long_answer",
-      "questions": [
-        {
-          "number": 1,
-          "text": "question text",
-          "marks": 5,
-          "subparts": ["part a text", "part b text"]
-        }
-      ]
-    }
+${schemaStr}
   ]
 }
 
 SECTION REQUIREMENTS:
-- Section A (MCQ): Exactly ${counts.mcq} questions, 4 options each, 1 mark each
-- Section B (Very Short Answer): Exactly ${counts.veryShort} questions, 1 mark each
-- Section C (Short Answer): Exactly ${counts.shortAnswer} questions, 3 marks each
-- Section D (Long Answer / Numerical): Exactly ${counts.longAnswer} questions, 5 marks each, with subparts
+${requirementsStr}
 
 Total: ${total} questions. Aim for up to ${aimFor} for comprehensive coverage.`;
 }
@@ -126,7 +182,7 @@ export async function generateQuestions(
     );
   }
 
-  const requestedTotal = questionCounts.mcq + questionCounts.veryShort + questionCounts.shortAnswer + questionCounts.longAnswer;
+  const requestedTotal = questionCounts.mcq + questionCounts.fillInTheBlanks + questionCounts.matchTheFollowing + questionCounts.veryShort + questionCounts.shortAnswer + questionCounts.longAnswer;
 
   contentParts.push(
     createTextContent(

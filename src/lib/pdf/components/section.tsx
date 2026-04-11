@@ -50,6 +50,22 @@ export function QuestionSectionBlock({ section, theme }: SectionProps) {
                 </View>
               )}
 
+              {/* Match the Following pairs */}
+              {question.matchPairs && question.matchPairs.length > 0 && (
+                <View style={styles.matchTable}>
+                  <View style={styles.matchHeaderRow}>
+                    <Text style={styles.matchColumnHeader}>Column A</Text>
+                    <Text style={styles.matchColumnHeader}>Column B</Text>
+                  </View>
+                  {question.matchPairs.map((pair, idx) => (
+                    <View key={idx} style={styles.matchRow}>
+                      <Text style={styles.matchCell}>{idx + 1}. {pair.left}</Text>
+                      <Text style={styles.matchCell}>{String.fromCharCode(97 + idx)}) {pair.right}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
               {/* Sub-parts */}
               {question.subparts && question.subparts.length > 0 && (
                 <View style={styles.subparts}>
@@ -142,6 +158,40 @@ function createStyles(theme: TemplateTheme) {
       lineHeight: 1.3,
       fontFamily: "Helvetica",
       paddingRight: 4,
+    },
+    matchTable: {
+      marginTop: 2,
+      marginBottom: 1,
+      paddingLeft: 4,
+      borderWidth: 0.5,
+      borderColor: "#cccccc",
+    },
+    matchHeaderRow: {
+      flexDirection: "row",
+      backgroundColor: theme.backgroundColor,
+      borderBottomWidth: 0.5,
+      borderBottomColor: "#cccccc",
+    },
+    matchColumnHeader: {
+      width: "50%",
+      fontSize: 7.5,
+      fontFamily: "Helvetica-Bold",
+      fontWeight: "bold",
+      paddingHorizontal: 4,
+      paddingVertical: 2,
+    },
+    matchRow: {
+      flexDirection: "row",
+      borderBottomWidth: 0.5,
+      borderBottomColor: "#eeeeee",
+    },
+    matchCell: {
+      width: "50%",
+      fontSize: 8,
+      lineHeight: 1.3,
+      fontFamily: "Helvetica",
+      paddingHorizontal: 4,
+      paddingVertical: 1.5,
     },
     subparts: {
       marginTop: 1,

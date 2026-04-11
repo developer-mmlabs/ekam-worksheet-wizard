@@ -23,6 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <a href="/admin" className="text-sm font-medium text-gray-600 hover:text-gray-900">
                 Admin
               </a>
+              <a href="/admin/worksheets" className="text-sm font-medium text-gray-600 hover:text-gray-900">
+                History
+              </a>
               <a href="/admin/upload" className="text-sm font-medium text-gray-600 hover:text-gray-900">
                 Upload
               </a>

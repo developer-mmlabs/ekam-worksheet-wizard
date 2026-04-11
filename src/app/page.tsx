@@ -15,12 +15,14 @@ export default function GeneratePage() {
   const [selectedChapter, setSelectedChapter] = useState("");
 
   const [mcqCount, setMcqCount] = useState(QUESTION_COUNT_DEFAULTS.mcq);
+  const [fillBlanksCount, setFillBlanksCount] = useState(QUESTION_COUNT_DEFAULTS.fillInTheBlanks);
+  const [matchCount, setMatchCount] = useState(QUESTION_COUNT_DEFAULTS.matchTheFollowing);
   const [veryShortCount, setVeryShortCount] = useState(QUESTION_COUNT_DEFAULTS.veryShort);
   const [shortAnswerCount, setShortAnswerCount] = useState(QUESTION_COUNT_DEFAULTS.shortAnswer);
   const [longAnswerCount, setLongAnswerCount] = useState(QUESTION_COUNT_DEFAULTS.longAnswer);
   const [showOptions, setShowOptions] = useState(false);
 
-  const totalQuestions = mcqCount + veryShortCount + shortAnswerCount + longAnswerCount;
+  const totalQuestions = mcqCount + fillBlanksCount + matchCount + veryShortCount + shortAnswerCount + longAnswerCount;
 
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState("");
@@ -77,14 +79,14 @@ export default function GeneratePage() {
       } catch {
         // Network error — keep polling
       }
-    }, 3000);
+    }, 30_000);
 
-    // Safety: stop polling after 10 minutes (Inngest handles long-running jobs)
+    // Safety: stop polling after 15 minutes (Inngest handles long-running jobs)
     timeoutRef.current = setTimeout(() => {
       stopPolling();
       setError("Generation is taking longer than expected. Check the admin dashboard for your worksheet.");
       setGenerating(false);
-    }, 600_000);
+    }, 900_000);
   }
 
   // Load grades on mount
@@ -164,6 +166,8 @@ export default function GeneratePage() {
           schoolId: school.id,
           questionCounts: {
             mcq: mcqCount,
+            fillInTheBlanks: fillBlanksCount,
+            matchTheFollowing: matchCount,
             veryShort: veryShortCount,
             shortAnswer: shortAnswerCount,
             longAnswer: longAnswerCount,
@@ -313,6 +317,32 @@ export default function GeneratePage() {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Fill in the Blanks (1 mark each)
+                      </label>
+                      <input
+                        type="number"
+                        value={fillBlanksCount || ""}
+                        min={QUESTION_COUNT_MINS.fillInTheBlanks}
+                        onChange={(e) => setFillBlanksCount(parseInt(e.target.value) || 0)}
+                        onBlur={() => setFillBlanksCount((v) => Math.max(QUESTION_COUNT_MINS.fillInTheBlanks, v))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Match the Following (4 marks each)
+                      </label>
+                      <input
+                        type="number"
+                        value={matchCount || ""}
+                        min={QUESTION_COUNT_MINS.matchTheFollowing}
+                        onChange={(e) => setMatchCount(parseInt(e.target.value) || 0)}
+                        onBlur={() => setMatchCount((v) => Math.max(QUESTION_COUNT_MINS.matchTheFollowing, v))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
                         Very Short Answer (1 mark each)
                       </label>
                       <input
@@ -356,7 +386,7 @@ export default function GeneratePage() {
                       Total: {totalQuestions} questions
                     </span>
                     <span className="text-xs text-gray-400">
-                      {mcqCount * 1 + veryShortCount * 1 + shortAnswerCount * 3 + longAnswerCount * 5} marks
+                      {mcqCount * 1 + fillBlanksCount * 1 + matchCount * 4 + veryShortCount * 1 + shortAnswerCount * 3 + longAnswerCount * 5} marks
                     </span>
                   </div>
                 </div>

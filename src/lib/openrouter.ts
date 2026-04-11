@@ -1,5 +1,5 @@
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY!;
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "qwen/qwen2.5-vl-72b-instruct";
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-3-flash-preview";
 
 interface Message {
   role: "system" | "user" | "assistant";

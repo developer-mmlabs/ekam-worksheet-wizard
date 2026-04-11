@@ -85,16 +85,22 @@ export interface QuestionSection {
   questions: Question[];
 }
 
-export type QuestionType = "mcq" | "very_short" | "short_answer" | "long_answer";
+export type QuestionType = "mcq" | "fill_in_the_blanks" | "match_the_following" | "very_short" | "short_answer" | "long_answer";
 
 export interface Question {
   number: number;
   text: string;
   marks?: number;
   options?: MCQOption[]; // Only for MCQ type
+  matchPairs?: MatchPair[]; // Only for match_the_following type
   subparts?: string[]; // For multi-part questions (a, b, c)
   orQuestion?: Question; // Alternative OR question
   hasFormula?: boolean; // Contains LaTeX/math
+}
+
+export interface MatchPair {
+  left: string;
+  right: string;
 }
 
 export interface MCQOption {
@@ -135,6 +141,8 @@ export interface WorksheetPDFData {
 
 export interface QuestionCounts {
   mcq: number;
+  fillInTheBlanks: number;
+  matchTheFollowing: number;
   veryShort: number;
   shortAnswer: number;
   longAnswer: number;
@@ -142,6 +150,8 @@ export interface QuestionCounts {
 
 export const QUESTION_COUNT_DEFAULTS: QuestionCounts = {
   mcq: 12,
+  fillInTheBlanks: 0,
+  matchTheFollowing: 0,
   veryShort: 8,
   shortAnswer: 6,
   longAnswer: 4,
@@ -149,6 +159,8 @@ export const QUESTION_COUNT_DEFAULTS: QuestionCounts = {
 
 export const QUESTION_COUNT_MINS: QuestionCounts = {
   mcq: 8,
+  fillInTheBlanks: 0,
+  matchTheFollowing: 0,
   veryShort: 5,
   shortAnswer: 3,
   longAnswer: 2,

@@ -18,13 +18,13 @@ function buildSystemPrompt(counts: QuestionCounts): string {
       requirement: `${counts.mcq} questions, 4 options each, 1 mark each`,
       schemaExample: `{
           "number": 1,
-          "text": "question text",
+          "text": "<actual question about the chapter>",
           "marks": 1,
           "options": [
-            {"label": "a", "text": "option text"},
-            {"label": "b", "text": "option text"},
-            {"label": "c", "text": "option text"},
-            {"label": "d", "text": "option text"}
+            {"label": "a", "text": "<actual option>"},
+            {"label": "b", "text": "<actual option>"},
+            {"label": "c", "text": "<actual option>"},
+            {"label": "d", "text": "<actual option>"}
           ]
         }`,
     },
@@ -35,7 +35,7 @@ function buildSystemPrompt(counts: QuestionCounts): string {
       requirement: `${counts.fillInTheBlanks} questions, 1 mark each. Use "______" (six underscores) in the sentence where the blank goes`,
       schemaExample: `{
           "number": 1,
-          "text": "The process of ______ converts light energy into chemical energy.",
+          "text": "<sentence with ______ for the blank>",
           "marks": 1
         }`,
     },
@@ -49,10 +49,10 @@ function buildSystemPrompt(counts: QuestionCounts): string {
           "text": "Match the items in Column A with Column B",
           "marks": 4,
           "matchPairs": [
-            {"left": "Item A1", "right": "Item B1"},
-            {"left": "Item A2", "right": "Item B2"},
-            {"left": "Item A3", "right": "Item B3"},
-            {"left": "Item A4", "right": "Item B4"}
+            {"left": "<term from chapter>", "right": "<matching definition/answer>"},
+            {"left": "<term from chapter>", "right": "<matching definition/answer>"},
+            {"left": "<term from chapter>", "right": "<matching definition/answer>"},
+            {"left": "<term from chapter>", "right": "<matching definition/answer>"}
           ]
         }`,
     },
@@ -63,7 +63,7 @@ function buildSystemPrompt(counts: QuestionCounts): string {
       requirement: `${counts.veryShort} questions, 1 mark each`,
       schemaExample: `{
           "number": 1,
-          "text": "question text",
+          "text": "<actual question about the chapter>",
           "marks": 1
         }`,
     },
@@ -74,7 +74,7 @@ function buildSystemPrompt(counts: QuestionCounts): string {
       requirement: `${counts.shortAnswer} questions, 3 marks each`,
       schemaExample: `{
           "number": 1,
-          "text": "question text",
+          "text": "<actual question about the chapter>",
           "marks": 3
         }`,
     },
@@ -85,9 +85,9 @@ function buildSystemPrompt(counts: QuestionCounts): string {
       requirement: `${counts.longAnswer} questions, 5 marks each, with subparts`,
       schemaExample: `{
           "number": 1,
-          "text": "question text",
+          "text": "<actual question about the chapter>",
           "marks": 5,
-          "subparts": ["part a text", "part b text"]
+          "subparts": ["<actual subpart a question>", "<actual subpart b question>"]
         }`,
     },
   ];
@@ -129,6 +129,7 @@ CRITICAL RULES:
 8. Include diagram-based questions where the chapter content involves visual concepts
 9. For Fill in the Blanks, use "______" (six underscores) to indicate the blank within a complete sentence
 10. For Match the Following, provide exactly 4-5 pairs per question with shuffled right-column items
+11. NEVER use placeholder text like "question text", "part a text", "option text" — every field must contain actual educational content from the chapter
 
 OUTPUT FORMAT: You must respond with ONLY valid JSON (no markdown, no code fences, no explanation).
 

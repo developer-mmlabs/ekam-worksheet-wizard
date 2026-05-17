@@ -43,7 +43,13 @@ function class10Maths(chapterName: string, cfg: WorksheetConfigValues): string {
 
 CHAPTER: ${chapterName}
 
-STRICT WORKSHEET STRUCTURE - produce exactly 3 sections:
+STRICT COUNTS — generate EXACTLY (not approximately):
+- Section A: EXACTLY ${cfg.sectionA} short-answer questions. Not ${cfg.sectionA - 1}, not ${cfg.sectionA + 1}.
+- Section B: EXACTLY ${cfg.assertionReason} assertion-reason items.
+- Section C: EXACTLY ${cfg.caseStudy} case studies (each with EXACTLY 4 MCQ sub-questions).
+Count your output items before submitting.
+
+WORKSHEET STRUCTURE - produce exactly 3 sections:
 
 SECTION A - Short Answer Questions (${cfg.sectionA} items)
 A mixed pool of concept, computation, proof and application questions. No marks shown. No options.
@@ -53,13 +59,20 @@ SECTION B - Assertion and Reason (${cfg.assertionReason} items)
 Use the standard 4-option key (in section instructions, not per item). Each item is a pair: Assertion (A) and Reason (R) - both full statements derived from chapter concepts. Mix outcomes across all four options - do NOT make every answer (a).
 
 SECTION C - Case Study (${cfg.caseStudy} case studies)
-Each case study has a real-world stimulus (sports, finance, design, structures, daily life) of 80-130 words (5-8 lines), followed by 4 MCQ sub-questions (4 options each). The stimulus must be substantial enough that all four sub-questions have material to interrogate.
+Each case study has a SUBSTANTIAL real-world stimulus of 150-200 words (8-12 lines), drawing from sports, finance, design, structures, daily life — followed by 4 MCQ sub-questions (4 options each). The stimulus must establish a concrete scenario with multiple named quantities, parties, or constraints so the sub-questions have ample material to interrogate.
 ${CASE_STUDY_QUALITY_RULES}
 
 GLOBAL RULES:
 - Every question must be directly derived from the chapter content in the provided textbook pages.
 - Mathematical notation as plain text (x^2, sqrt(15), 22/7). No LaTeX.
 - Output PURE JSON only - no markdown fences, no commentary, no preamble.
+
+VERIFICATION before responding:
+- sections[0].questions.length === ${cfg.sectionA}
+- sections[1].questions.length === ${cfg.assertionReason}
+- sections[2].caseStudies.length === ${cfg.caseStudy}
+- Each caseStudies[i].questions.length === 4
+If any count is off, fix it before producing the response.
 
 JSON SCHEMA:
 {
@@ -73,7 +86,7 @@ JSON SCHEMA:
     { "id": "C", "title": "Case Study", "type": "case_study",
       "caseStudies": [{
         "number": 1,
-        "stimulus": "<80-130 word real-world scenario, 5-8 lines>",
+        "stimulus": "<150-200 word real-world scenario, 8-12 lines>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
@@ -88,7 +101,13 @@ function class10Science(chapterName: string, cfg: WorksheetConfigValues): string
 
 CHAPTER: ${chapterName}
 
-STRICT WORKSHEET STRUCTURE - produce exactly 3 sections:
+STRICT COUNTS — generate EXACTLY (not approximately):
+- Section A: EXACTLY ${cfg.sectionA} short-answer questions.
+- Section B: EXACTLY ${cfg.assertionReason} assertion-reason items.
+- Section C: EXACTLY ${cfg.caseStudy} case studies (each with EXACTLY 4 MCQ sub-questions).
+Count your output items before submitting.
+
+WORKSHEET STRUCTURE - produce exactly 3 sections:
 
 SECTION A - Short Answer Questions (${cfg.sectionA} items)
 A mixed pool of concept, explanation, application and reasoning questions. Include at least 4 "Give a reason for..." or "Explain why..." items. No marks shown.
@@ -98,7 +117,7 @@ SECTION B - Assertion and Reason (${cfg.assertionReason} items)
 Standard 4-option key (in section instructions). Each item is a pair: Assertion (A) and Reason (R) - both full statements from chapter concepts. Mix outcomes across all four options.
 
 SECTION C - Case Study (${cfg.caseStudy} case studies)
-Each case study has a scientific stimulus of 80-130 words (5-8 lines) — an experimental setup, real-world phenomenon, observation, or principle in action — followed by 4 MCQ sub-questions (4 options each). Include data, numbers, or specific observations the sub-questions can probe.
+Each case study has a SUBSTANTIAL scientific stimulus of 150-200 words (8-12 lines) — an experimental setup, real-world phenomenon, observation table, or principle in action — followed by 4 MCQ sub-questions (4 options each). Include data, numbers, specific observations, and named entities so the sub-questions have rich material to probe.
 ${CASE_STUDY_QUALITY_RULES}
 
 GLOBAL RULES:
@@ -106,6 +125,12 @@ GLOBAL RULES:
 - Balance Physics/Chemistry/Biology if the chapter touches multiple.
 - Chemical formulae and equations as plain text (e.g., 2H2 + O2 -> 2H2O).
 - Output PURE JSON only - no markdown fences, no commentary.
+
+VERIFICATION before responding:
+- sections[0].questions.length === ${cfg.sectionA}
+- sections[1].questions.length === ${cfg.assertionReason}
+- sections[2].caseStudies.length === ${cfg.caseStudy}
+- Each caseStudies[i].questions.length === 4
 
 JSON SCHEMA:
 {
@@ -119,7 +144,7 @@ JSON SCHEMA:
     { "id": "C", "title": "Case Study", "type": "case_study",
       "caseStudies": [{
         "number": 1,
-        "stimulus": "<80-130 word scientific scenario, 5-8 lines>",
+        "stimulus": "<150-200 word scientific scenario, 8-12 lines>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
@@ -134,7 +159,13 @@ function class10SocialScience(chapterName: string, cfg: WorksheetConfigValues): 
 
 CHAPTER: ${chapterName}
 
-STRICT WORKSHEET STRUCTURE - produce exactly 3 sections:
+STRICT COUNTS — generate EXACTLY (not approximately):
+- Section A: EXACTLY ${cfg.sectionA} short-answer questions.
+- Section B: EXACTLY ${cfg.assertionReason} assertion-reason items.
+- Section C: EXACTLY ${cfg.caseStudy} source-based extracts (each with EXACTLY 4 sub-questions).
+Count your output items before submitting.
+
+WORKSHEET STRUCTURE - produce exactly 3 sections:
 
 SECTION A - Short Answer Questions (${cfg.sectionA} items)
 A mixed pool of factual recall, cause-effect and analytical questions. Cover the chapter's full breadth across History/Geography/Civics/Economics as relevant.
@@ -144,7 +175,7 @@ SECTION B - Assertion and Reason (${cfg.assertionReason} items)
 Standard 4-option key. Assertion is a historical/geographical/civic/economic claim; Reason explains. Mix outcomes across all four options.
 
 SECTION C - Source-Based Questions (${cfg.caseStudy} source extracts)
-Each item has a 70-110 word source extract (4-7 lines): a quoted speech, treaty excerpt, report, data passage, or NCERT-style historical narrative relevant to the chapter and period-authentic. Followed by 4 sub-questions (3 MCQ + 1 short answer OR 4 MCQs).
+Each item has a 150-200 word source extract (8-12 lines): a quoted speech, treaty excerpt, news report, data passage, or NCERT-style historical narrative — period-authentic and rich enough to support multi-step interpretation. Followed by 4 sub-questions (3 MCQ + 1 short answer OR 4 MCQs).
 ${CASE_STUDY_QUALITY_RULES}
 - The source extract must read like an actual primary text - quote a named speaker, dated document, or specific data source where appropriate.
 
@@ -152,6 +183,12 @@ GLOBAL RULES:
 - Every question directly derived from the chapter content in the provided textbook pages.
 - Indian context preferred for examples.
 - Output PURE JSON only - no markdown fences, no commentary.
+
+VERIFICATION before responding:
+- sections[0].questions.length === ${cfg.sectionA}
+- sections[1].questions.length === ${cfg.assertionReason}
+- sections[2].caseStudies.length === ${cfg.caseStudy}
+- Each caseStudies[i].questions.length === 4
 
 JSON SCHEMA:
 {
@@ -165,7 +202,7 @@ JSON SCHEMA:
     { "id": "C", "title": "Source-Based Questions", "type": "case_study",
       "caseStudies": [{
         "number": 1,
-        "stimulus": "<70-110 word source extract, 4-7 lines, primary-text style>",
+        "stimulus": "<150-200 word source extract, 8-12 lines, primary-text style>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
@@ -180,7 +217,13 @@ function class10English(chapterName: string, cfg: WorksheetConfigValues): string
 
 CHAPTER: ${chapterName}
 
-STRICT WORKSHEET STRUCTURE - produce exactly 3 sections:
+STRICT COUNTS — generate EXACTLY (not approximately):
+- Section A: EXACTLY ${cfg.sectionA} reading / comprehension questions.
+- Section B: EXACTLY ${cfg.assertionReason} grammar items.
+- Section C: EXACTLY ${cfg.caseStudy} literature extracts (each with EXACTLY 4-5 sub-questions).
+Count your output items before submitting.
+
+WORKSHEET STRUCTURE - produce exactly 3 sections:
 
 SECTION A - Short Answer / Reading Questions (${cfg.sectionA} items)
 A mixed pool of literal comprehension, inferential questions, vocabulary-in-context (meaning/synonym/antonym), character/theme/setting analysis, and RTC short questions. No options. No marks.
@@ -194,13 +237,18 @@ Each item tests a grammatical concept relevant to Class 10 CBSE (Tenses, Reporte
 Stand-alone short items, no options.
 
 SECTION C - Literature Extract (${cfg.caseStudy} extracts)
-Each extract is a 4-7 line passage (50-90 words) drawn from the chapter text — prose or poetry as relevant. Followed by 4-5 sub-questions: 2-3 MCQ-style (4 options each) testing comprehension of the extract, and 1-2 short-answer sub-questions testing inference or theme. Quote the chapter text faithfully; do not paraphrase.
+Each extract is a 4-7 line passage (50-90 words) drawn directly from the chapter text — prose or poetry as relevant. Quote the chapter text faithfully; do not paraphrase. Length is naturally constrained by the source text and should NOT be artificially padded. Each extract is followed by 4-5 sub-questions: 2-3 MCQ-style (4 options each) testing comprehension of the extract, and 1-2 short-answer sub-questions testing inference or theme.
 ${CASE_STUDY_QUALITY_RULES}
 
 GLOBAL RULES:
 - Stay within the chapter's content (textbook pages provided).
 - Use language and tone appropriate for Class 10 CBSE.
 - Output PURE JSON only - no markdown fences, no commentary.
+
+VERIFICATION before responding:
+- sections[0].questions.length === ${cfg.sectionA}
+- sections[1].questions.length === ${cfg.assertionReason}
+- sections[2].caseStudies.length === ${cfg.caseStudy}
 
 JSON SCHEMA:
 {
@@ -231,7 +279,13 @@ function class10Hindi(chapterName: string, cfg: WorksheetConfigValues): string {
 
 अध्याय: ${chapterName}
 
-कठोर वर्कशीट संरचना - ठीक 3 अनुभाग बनाएं:
+कठोर संख्याएँ - ठीक उतनी ही उत्पन्न करें (अनुमानित नहीं):
+- खंड A: ठीक ${cfg.sectionA} लघु उत्तरीय प्रश्न।
+- खंड B: ठीक ${cfg.assertionReason} व्याकरण प्रश्न।
+- खंड C: ठीक ${cfg.caseStudy} पाठ्यांश (प्रत्येक के लिए 4-5 उप-प्रश्न)।
+उत्तर देने से पहले अपनी संख्याएँ गिनें।
+
+वर्कशीट संरचना - ठीक 3 अनुभाग बनाएं:
 
 खंड A - लघु उत्तरीय प्रश्न (${cfg.sectionA} प्रश्न)
 पाठ्यपुस्तक से अर्थ-ग्रहण, संदर्भ, भाव-स्पष्टीकरण, चरित्र-विश्लेषण, विषय-वस्तु संबंधी मिश्रित लघु प्रश्न। निर्देश शब्दों का प्रयोग: "बताइए", "लिखिए", "स्पष्ट कीजिए", "किसने कहा और क्यों", "आशय स्पष्ट कीजिए"। कोई विकल्प नहीं, कोई अंक नहीं।
@@ -248,6 +302,11 @@ ${CASE_STUDY_QUALITY_RULES}
 - सभी प्रश्न दिए गए पाठ्यपुस्तक पृष्ठों के अध्याय की विषय-वस्तु से ही निकाले जाएं।
 - भाषा कक्षा 10 स्तर की हो।
 - केवल शुद्ध JSON दें - कोई markdown fences नहीं, कोई टिप्पणी नहीं।
+
+जाँच - उत्तर देने से पहले:
+- sections[0].questions.length === ${cfg.sectionA}
+- sections[1].questions.length === ${cfg.assertionReason}
+- sections[2].caseStudies.length === ${cfg.caseStudy}
 
 JSON SCHEMA:
 {
@@ -458,6 +517,25 @@ export async function generateQuestions(
   }, 0);
 
   questions.metadata.totalQuestions = totalQuestions;
+
+  // Log count drift for Class 10 (where we ask for exact counts)
+  if (context.gradeNumber === 10) {
+    const actualSectionA = questions.sections[0]?.questions?.length ?? 0;
+    const actualSectionB = questions.sections[1]?.questions?.length ?? 0;
+    const actualSectionC = questions.sections[2]?.caseStudies?.length ?? 0;
+    const want = {
+      a: config.sectionA ?? 0,
+      b: config.assertionReason ?? 0,
+      c: config.caseStudy ?? 0,
+    };
+    const got = { a: actualSectionA, b: actualSectionB, c: actualSectionC };
+    if (got.a !== want.a || got.b !== want.b || got.c !== want.c) {
+      console.warn(
+        `[worksheet-gen] Count drift for ${context.subjectSlug} "${context.chapterName}": ` +
+        `requested A=${want.a}/B=${want.b}/C=${want.c}, got A=${got.a}/B=${got.b}/C=${got.c}`
+      );
+    }
+  }
 
   // Renumber sequentially within each section / case study
   questions.sections.forEach((section) => {

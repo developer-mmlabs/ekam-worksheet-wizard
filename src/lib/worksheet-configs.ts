@@ -10,41 +10,41 @@ import type { WorksheetConfigSpec, WorksheetConfigValues } from "@/types";
 export const WORKSHEET_CONFIGS: Record<string, WorksheetConfigSpec> = {
   "10:mathematics": {
     controls: [
-      { id: "sectionA",        label: "Section A — Short Answer Questions", default: 30, min: 15, max: 40 },
-      { id: "assertionReason", label: "Section B — Assertion-Reason items", default: 6,  min: 4,  max: 8 },
-      { id: "caseStudy",       label: "Section C — Case Studies",           default: 2,  min: 1,  max: 3 },
+      { id: "sectionA",        label: "Section A — Short Answer Questions", default: 20, min: 10, max: 35 },
+      { id: "assertionReason", label: "Section B — Assertion-Reason items", default: 10, min: 4,  max: 15 },
+      { id: "caseStudy",       label: "Section C — Case Studies",           default: 4,  min: 1,  max: 6 },
     ],
     helperText: "CBSE Class 10 chapter-wise practice format: short-answer pool + Assertion-Reason + Case Study.",
   },
   "10:science": {
     controls: [
-      { id: "sectionA",        label: "Section A — Short Answer Questions", default: 30, min: 15, max: 40 },
-      { id: "assertionReason", label: "Section B — Assertion-Reason items", default: 6,  min: 4,  max: 8 },
-      { id: "caseStudy",       label: "Section C — Case Studies",           default: 2,  min: 1,  max: 3 },
+      { id: "sectionA",        label: "Section A — Short Answer Questions", default: 20, min: 10, max: 35 },
+      { id: "assertionReason", label: "Section B — Assertion-Reason items", default: 10, min: 4,  max: 15 },
+      { id: "caseStudy",       label: "Section C — Case Studies",           default: 4,  min: 1,  max: 6 },
     ],
     helperText: "CBSE Class 10 chapter-wise practice format: short-answer pool + Assertion-Reason + Case Study.",
   },
   "10:social_studies": {
     controls: [
-      { id: "sectionA",        label: "Section A — Short Answer Questions",        default: 30, min: 15, max: 40 },
-      { id: "assertionReason", label: "Section B — Assertion-Reason items",        default: 6,  min: 4,  max: 8 },
-      { id: "caseStudy",       label: "Section C — Source-Based Extracts",         default: 2,  min: 1,  max: 3 },
+      { id: "sectionA",        label: "Section A — Short Answer Questions",        default: 20, min: 10, max: 35 },
+      { id: "assertionReason", label: "Section B — Assertion-Reason items",        default: 10, min: 4,  max: 15 },
+      { id: "caseStudy",       label: "Section C — Source-Based Extracts",         default: 4,  min: 1,  max: 6 },
     ],
     helperText: "CBSE Class 10 chapter-wise practice format: short-answer pool + Assertion-Reason + Source-Based.",
   },
   "10:english": {
     controls: [
-      { id: "sectionA",        label: "Section A — Short Answer / Reading", default: 30, min: 15, max: 40 },
-      { id: "assertionReason", label: "Section B — Grammar items",          default: 6,  min: 4,  max: 8 },
-      { id: "caseStudy",       label: "Section C — Literature Extracts",    default: 1,  min: 1,  max: 2 },
+      { id: "sectionA",        label: "Section A — Short Answer / Reading", default: 20, min: 10, max: 35 },
+      { id: "assertionReason", label: "Section B — Grammar items",          default: 10, min: 4,  max: 15 },
+      { id: "caseStudy",       label: "Section C — Literature Extracts",    default: 2,  min: 1,  max: 4 },
     ],
     helperText: "CBSE Class 10 chapter-wise practice format: reading + grammar + literature extract.",
   },
   "10:hindi": {
     controls: [
-      { id: "sectionA",        label: "खंड A — लघु उत्तरीय प्रश्न",   default: 30, min: 15, max: 40 },
-      { id: "assertionReason", label: "खंड B — व्याकरण प्रश्न",       default: 6,  min: 4,  max: 8 },
-      { id: "caseStudy",       label: "खंड C — पाठ्यांश आधारित प्रश्न", default: 1,  min: 1,  max: 2 },
+      { id: "sectionA",        label: "खंड A — लघु उत्तरीय प्रश्न",   default: 20, min: 10, max: 35 },
+      { id: "assertionReason", label: "खंड B — व्याकरण प्रश्न",       default: 10, min: 4,  max: 15 },
+      { id: "caseStudy",       label: "खंड C — पाठ्यांश आधारित प्रश्न", default: 2,  min: 1,  max: 4 },
     ],
     helperText: "CBSE कक्षा 10 अध्यायवार अभ्यास प्रारूप: लघु उत्तरीय + व्याकरण + पाठ्यांश।",
   },

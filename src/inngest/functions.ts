@@ -80,9 +80,13 @@ export const processWorksheet = inngest.createFunction(
     const questions = await step.run("generate-questions", async () => {
       return await generateQuestions(
         imageBase64s,
-        gradeData.name,
-        subjectData.name,
-        chapter.name as string,
+        {
+          gradeNumber: gradeData.number,
+          gradeName: gradeData.name,
+          subjectSlug: subjectData.slug,
+          subjectName: subjectData.name,
+          chapterName: chapter.name as string,
+        },
         counts,
       );
     });

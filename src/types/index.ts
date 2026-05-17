@@ -79,13 +79,30 @@ export interface WorksheetQuestions {
 }
 
 export interface QuestionSection {
-  id: string; // "A", "B", "C", "D"
-  title: string; // "Multiple Choice Questions"
-  type: QuestionType;
-  questions: Question[];
+  id: string; // "A", "B", "C"
+  title: string; // "Short Answer Questions"
+  type: SectionType;
+  instructions?: string; // Printed once at top of section (e.g. assertion-reason direction key)
+  questions?: Question[]; // For non-case-study sections
+  caseStudies?: CaseStudy[]; // Only when type === "case_study"
 }
 
-export type QuestionType = "mcq" | "fill_in_the_blanks" | "match_the_following" | "very_short" | "short_answer" | "long_answer";
+export type QuestionType =
+  | "mcq"
+  | "fill_in_the_blanks"
+  | "match_the_following"
+  | "very_short"
+  | "short_answer"
+  | "long_answer"
+  | "assertion_reason";
+
+export type SectionType = QuestionType | "case_study";
+
+export interface CaseStudy {
+  number: number;
+  stimulus: string;
+  questions: Question[];
+}
 
 export interface Question {
   number: number;
@@ -96,6 +113,8 @@ export interface Question {
   subparts?: string[]; // For multi-part questions (a, b, c)
   orQuestion?: Question; // Alternative OR question
   hasFormula?: boolean; // Contains LaTeX/math
+  assertion?: string; // Only for assertion_reason type
+  reason?: string; // Only for assertion_reason type
 }
 
 export interface MatchPair {

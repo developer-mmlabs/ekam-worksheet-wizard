@@ -1,10 +1,56 @@
-import { GradeBand, TemplateTheme } from "@/types";
+import { GradeBand, TemplateTheme, DecorationLayout } from "@/types";
 
 // Grade band base styles
 const GRADE_BAND_STYLES: Record<GradeBand, { fontFamily: string; decorativeOpacity: number }> = {
   primary: { fontFamily: "Helvetica", decorativeOpacity: 0.06 },
   middle: { fontFamily: "Helvetica", decorativeOpacity: 0.05 },
   senior: { fontFamily: "Helvetica", decorativeOpacity: 0.04 },
+};
+
+// Grade-band decoration layout — controls density, size, and visual weight
+export const GRADE_BAND_LAYOUTS: Record<GradeBand, DecorationLayout> = {
+  primary: {
+    cornerCount: 4,
+    cornerSize: 90,
+    marginSide: "both",
+    marginIconCount: 9,
+    marginIconSize: 20,
+    patternGridSpacing: 80,
+    patternTileSize: 28,
+    patternOpacity: 0.06,
+    cornerOpacity: 0.12,
+    marginOpacity: 0.18,
+    strokeWidth: 2.5,
+    colorMode: "tricolor",
+  },
+  middle: {
+    cornerCount: 2,
+    cornerSize: 70,
+    marginSide: "left",
+    marginIconCount: 7,
+    marginIconSize: 18,
+    patternGridSpacing: 100,
+    patternTileSize: 24,
+    patternOpacity: 0.04,
+    cornerOpacity: 0.10,
+    marginOpacity: 0.15,
+    strokeWidth: 2,
+    colorMode: "duotone",
+  },
+  senior: {
+    cornerCount: 1,
+    cornerSize: 55,
+    marginSide: "right",
+    marginIconCount: 5,
+    marginIconSize: 16,
+    patternGridSpacing: 120,
+    patternTileSize: 20,
+    patternOpacity: 0.025,
+    cornerOpacity: 0.07,
+    marginOpacity: 0.10,
+    strokeWidth: 1.2,
+    colorMode: "mono",
+  },
 };
 
 // Subject-specific color palettes
@@ -133,6 +179,8 @@ export function getTheme(
 ): TemplateTheme {
   const bandStyle = GRADE_BAND_STYLES[gradeBand];
 
+  const layout = GRADE_BAND_LAYOUTS[gradeBand];
+
   // Use school's admin-configured colors when available, otherwise fall back to subject defaults
   if (schoolColors) {
     return {
@@ -146,6 +194,7 @@ export function getTheme(
       sectionHeaderColor: darken(schoolColors.primary, 0.15),
       fontFamily: bandStyle.fontFamily,
       decorativeOpacity: bandStyle.decorativeOpacity,
+      decorationLayout: layout,
     };
   }
 
@@ -161,6 +210,7 @@ export function getTheme(
     sectionHeaderColor: colors.sectionHeader,
     fontFamily: bandStyle.fontFamily,
     decorativeOpacity: bandStyle.decorativeOpacity,
+    decorationLayout: layout,
   };
 }
 

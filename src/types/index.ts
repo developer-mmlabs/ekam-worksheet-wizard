@@ -112,6 +112,21 @@ export interface MCQOption {
 // PDF Template Types
 // ============================================================
 
+export interface DecorationLayout {
+  cornerCount: 1 | 2 | 4;
+  cornerSize: number;
+  marginSide: "both" | "left" | "right";
+  marginIconCount: number;
+  marginIconSize: number;
+  patternGridSpacing: number;
+  patternTileSize: number;
+  patternOpacity: number;
+  cornerOpacity: number;
+  marginOpacity: number;
+  strokeWidth: number;
+  colorMode: "tricolor" | "duotone" | "mono";
+}
+
 export interface TemplateTheme {
   gradeBand: GradeBand;
   subject: string;
@@ -123,6 +138,7 @@ export interface TemplateTheme {
   sectionHeaderColor: string;
   fontFamily: string;
   decorativeOpacity: number; // ~0.06 for light backgrounds
+  decorationLayout: DecorationLayout;
 }
 
 export interface WorksheetPDFData {

@@ -3,7 +3,7 @@ import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import { WorksheetPDFData, QuestionSection } from "@/types";
 import { WorksheetHeader } from "./components/header";
 import { QuestionSectionBlock } from "./components/section";
-import { SubjectIcon, SUBJECT_ICONS, SUBJECT_BG_SHAPES, DEFAULT_ICONS } from "./decorations";
+import { SubjectIcon, SUBJECT_DECORATIONS, DEFAULT_DECORATIONS } from "./decorations";
 import { renderToBuffer } from "@react-pdf/renderer";
 
 // A4 dimensions in points (1pt = 1/72 inch)
@@ -22,8 +22,7 @@ interface WorksheetDocumentProps {
 
 function WorksheetDocument({ data }: WorksheetDocumentProps) {
   const { school, grade, subject, chapter, questions, worksheetNumber, theme } = data;
-  const icons = SUBJECT_ICONS[subject.slug] || DEFAULT_ICONS;
-  const bgShapes = SUBJECT_BG_SHAPES[subject.slug] || SUBJECT_BG_SHAPES.science;
+  const deco = SUBJECT_DECORATIONS[subject.slug] || DEFAULT_DECORATIONS;
 
   // Styles for the document
   const styles = StyleSheet.create({
@@ -102,171 +101,127 @@ function WorksheetDocument({ data }: WorksheetDocumentProps) {
   });
 
   const BackgroundDecorations = () => {
+    const layout = theme.decorationLayout;
     const c1 = theme.primaryColor;
     const c2 = theme.secondaryColor;
     const c3 = theme.accentColor;
 
+    // Color picker based on grade band color mode
+    const pickColor = (index: number): string => {
+      if (layout.colorMode === "mono") return c1;
+      if (layout.colorMode === "duotone") return [c1, c2][index % 2];
+      return [c1, c2, c3][index % 3];
+    };
+
+    // ── Layer 2: Pattern field calculations ──
+    const patternStartY = 95;
+    const patternEndY = 810;
+    const patternStartX = 35;
+    const patternEndX = A4_WIDTH - 35;
+    const patternRows = Math.floor((patternEndY - patternStartY) / layout.patternGridSpacing);
+    const patternCols = Math.floor((patternEndX - patternStartX) / layout.patternGridSpacing);
+
+    // ── Layer 3: Corner positions as [top, left] ──
+    const cs = layout.cornerSize;
+    const cornerPositions: [number, number][] = [];
+    if (layout.cornerCount >= 4) cornerPositions.push([18, 6]);
+    cornerPositions.push([18, A4_WIDTH - 10 - cs]);
+    if (layout.cornerCount >= 2) cornerPositions.push([A4_HEIGHT - 24 - cs, 6]);
+    if (layout.cornerCount >= 4) cornerPositions.push([A4_HEIGHT - 24 - cs, A4_WIDTH - 10 - cs]);
+
+    // ── Layer 4: Margin accent calculations ──
+    const marginStartY = 85;
+    const marginEndY = 790;
+    const marginSpacing = layout.marginIconCount > 1
+      ? (marginEndY - marginStartY) / (layout.marginIconCount - 1)
+      : 0;
+
     return (
       <View style={styles.backgroundDecoration} fixed>
-        {/* Full page tinted wash */}
+        {/* Layer 1: Tinted wash */}
         <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.backgroundColor, opacity: 0.35 }} />
 
-        {/* Page border frame */}
-        <View style={{ position: "absolute", top: 8, left: 6, right: 6, bottom: 8, borderWidth: 1, borderColor: c1, borderRadius: 10, opacity: 0.2 }} />
+        {/* Layer 2: Geometric pattern field */}
+        {Array.from({ length: patternRows }).map((_, r) =>
+          Array.from({ length: patternCols }).map((_, c) => {
+            const tileIndex = (r + c) % deco.pattern.length;
+            return (
+              <View
+                key={`p${r}-${c}`}
+                style={{
+                  position: "absolute",
+                  top: patternStartY + r * layout.patternGridSpacing,
+                  left: patternStartX + c * layout.patternGridSpacing,
+                }}
+              >
+                <SubjectIcon
+                  icon={deco.pattern[tileIndex]}
+                  size={layout.patternTileSize}
+                  color={pickColor(r + c)}
+                  opacity={layout.patternOpacity}
+                  strokeWidth={layout.strokeWidth * 0.6}
+                />
+              </View>
+            );
+          })
+        )}
 
-        {/* Large background bubbles — spread across ENTIRE page */}
-        <View style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: 70, backgroundColor: c1, opacity: 0.08 }} />
-        <View style={{ position: "absolute", top: 60, left: -40, width: 130, height: 130, borderRadius: 65, backgroundColor: c2, opacity: 0.07 }} />
-        <View style={{ position: "absolute", top: 180, right: 80, width: 110, height: 110, borderRadius: 55, backgroundColor: c3, opacity: 0.06 }} />
-        <View style={{ position: "absolute", top: 320, left: 120, width: 120, height: 120, borderRadius: 60, backgroundColor: c1, opacity: 0.06 }} />
-        <View style={{ position: "absolute", top: 480, right: -25, width: 150, height: 150, borderRadius: 75, backgroundColor: c2, opacity: 0.07 }} />
-        <View style={{ position: "absolute", top: 600, left: 200, width: 100, height: 100, borderRadius: 50, backgroundColor: c3, opacity: 0.06 }} />
-        <View style={{ position: "absolute", top: 720, left: -30, width: 110, height: 110, borderRadius: 55, backgroundColor: c1, opacity: 0.07 }} />
-        <View style={{ position: "absolute", bottom: -35, right: 120, width: 130, height: 130, borderRadius: 65, backgroundColor: c2, opacity: 0.06 }} />
-        <View style={{ position: "absolute", top: 250, left: 350, width: 90, height: 90, borderRadius: 45, backgroundColor: c3, opacity: 0.05 }} />
-        <View style={{ position: "absolute", top: 450, left: 50, width: 100, height: 100, borderRadius: 50, backgroundColor: c2, opacity: 0.06 }} />
+        {/* Layer 3: Corner compositions */}
+        {cornerPositions.map(([top, left], i) => {
+          const heroIdx = i % deco.hero.length;
+          const secondIdx = (i + 1) % deco.hero.length;
+          return (
+            <React.Fragment key={`c${i}`}>
+              <View style={{ position: "absolute", top, left }}>
+                <SubjectIcon
+                  icon={deco.hero[heroIdx]}
+                  size={cs}
+                  color={pickColor(i)}
+                  opacity={layout.cornerOpacity}
+                  strokeWidth={layout.strokeWidth}
+                />
+              </View>
+              <View style={{ position: "absolute", top: top + cs * 0.4, left: left + cs * 0.3 }}>
+                <SubjectIcon
+                  icon={deco.hero[secondIdx]}
+                  size={cs * 0.6}
+                  color={pickColor(i + 1)}
+                  opacity={layout.cornerOpacity * 0.6}
+                  strokeWidth={layout.strokeWidth}
+                />
+              </View>
+            </React.Fragment>
+          );
+        })}
 
-        {/* Medium circles scattered throughout content area */}
-        <View style={{ position: "absolute", top: 100, left: 220, width: 55, height: 55, borderRadius: 28, backgroundColor: c1, opacity: 0.07 }} />
-        <View style={{ position: "absolute", top: 230, right: 160, width: 45, height: 45, borderRadius: 23, backgroundColor: c3, opacity: 0.08 }} />
-        <View style={{ position: "absolute", top: 380, left: 310, width: 50, height: 50, borderRadius: 25, backgroundColor: c2, opacity: 0.07 }} />
-        <View style={{ position: "absolute", top: 530, right: 220, width: 40, height: 40, borderRadius: 20, backgroundColor: c1, opacity: 0.08 }} />
-        <View style={{ position: "absolute", top: 680, left: 170, width: 48, height: 48, borderRadius: 24, backgroundColor: c3, opacity: 0.07 }} />
-        <View style={{ position: "absolute", top: 150, right: 50, width: 35, height: 35, borderRadius: 18, backgroundColor: c2, opacity: 0.08 }} />
-        <View style={{ position: "absolute", top: 500, left: 400, width: 42, height: 42, borderRadius: 21, backgroundColor: c1, opacity: 0.07 }} />
-        <View style={{ position: "absolute", top: 770, right: 80, width: 38, height: 38, borderRadius: 19, backgroundColor: c3, opacity: 0.07 }} />
+        {/* Layer 4: Margin accents */}
+        {Array.from({ length: layout.marginIconCount }).map((_, i) => {
+          const yPos = marginStartY + i * marginSpacing;
+          const accentIdx = i % deco.accent.length;
+          const isLeft = layout.marginSide === "left" || (layout.marginSide === "both" && i % 2 === 0);
+          return (
+            <View
+              key={`m${i}`}
+              style={{
+                position: "absolute",
+                top: yPos,
+                ...(isLeft ? { left: 4 } : { right: 2 }),
+              }}
+            >
+              <SubjectIcon
+                icon={deco.accent[accentIdx]}
+                size={layout.marginIconSize}
+                color={pickColor(i)}
+                opacity={layout.marginOpacity}
+                strokeWidth={layout.strokeWidth * 0.8}
+              />
+            </View>
+          );
+        })}
 
-        {/* Ring outlines — edges AND interior */}
-        <View style={{ position: "absolute", top: 180, left: -8, width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, borderColor: c2, opacity: 0.2 }} />
-        <View style={{ position: "absolute", top: 430, right: -5, width: 35, height: 35, borderRadius: 18, borderWidth: 1.5, borderColor: c1, opacity: 0.2 }} />
-        <View style={{ position: "absolute", top: 620, left: -5, width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: c3, opacity: 0.2 }} />
-        <View style={{ position: "absolute", top: 90, right: -6, width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: c2, opacity: 0.18 }} />
-        <View style={{ position: "absolute", top: 280, left: 260, width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: c1, opacity: 0.14 }} />
-        <View style={{ position: "absolute", top: 560, right: 190, width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: c3, opacity: 0.14 }} />
-        <View style={{ position: "absolute", top: 700, left: 380, width: 25, height: 25, borderRadius: 13, borderWidth: 1, borderColor: c2, opacity: 0.13 }} />
-        <View style={{ position: "absolute", top: 400, left: 160, width: 22, height: 22, borderRadius: 11, borderWidth: 1, borderColor: c1, opacity: 0.13 }} />
-
-        {/* Small scattered dots — all over the page */}
-        <View style={{ position: "absolute", top: 115, right: 45, width: 14, height: 14, borderRadius: 7, backgroundColor: c3, opacity: 0.13 }} />
-        <View style={{ position: "absolute", top: 240, left: 55, width: 12, height: 12, borderRadius: 6, backgroundColor: c1, opacity: 0.12 }} />
-        <View style={{ position: "absolute", top: 360, right: 65, width: 16, height: 16, borderRadius: 8, backgroundColor: c2, opacity: 0.12 }} />
-        <View style={{ position: "absolute", top: 490, left: 45, width: 10, height: 10, borderRadius: 5, backgroundColor: c3, opacity: 0.13 }} />
-        <View style={{ position: "absolute", top: 620, right: 55, width: 13, height: 13, borderRadius: 7, backgroundColor: c1, opacity: 0.12 }} />
-        <View style={{ position: "absolute", top: 190, left: 350, width: 10, height: 10, borderRadius: 5, backgroundColor: c1, opacity: 0.12 }} />
-        <View style={{ position: "absolute", top: 430, right: 260, width: 12, height: 12, borderRadius: 6, backgroundColor: c2, opacity: 0.11 }} />
-        <View style={{ position: "absolute", top: 740, left: 290, width: 11, height: 11, borderRadius: 6, backgroundColor: c3, opacity: 0.11 }} />
-        <View style={{ position: "absolute", top: 310, left: 180, width: 9, height: 9, borderRadius: 5, backgroundColor: c2, opacity: 0.11 }} />
-        <View style={{ position: "absolute", top: 570, right: 140, width: 11, height: 11, borderRadius: 6, backgroundColor: c3, opacity: 0.11 }} />
-        <View style={{ position: "absolute", top: 160, left: 450, width: 8, height: 8, borderRadius: 4, backgroundColor: c1, opacity: 0.10 }} />
-        <View style={{ position: "absolute", top: 650, left: 420, width: 9, height: 9, borderRadius: 5, backgroundColor: c2, opacity: 0.10 }} />
-
-        {/* Horizontal decorative bands across content */}
-        <View style={{ position: "absolute", top: 170, left: 30, right: 30, height: 1, backgroundColor: c1, opacity: 0.1, borderRadius: 1 }} />
-        <View style={{ position: "absolute", top: 390, left: 50, right: 50, height: 1, backgroundColor: c2, opacity: 0.09, borderRadius: 1 }} />
-        <View style={{ position: "absolute", top: 610, left: 40, right: 40, height: 1, backgroundColor: c3, opacity: 0.1, borderRadius: 1 }} />
-
-        {/* Left margin colored dots */}
-        {Array.from({ length: 14 }).map((_, i) => (
-          <View
-            key={`ld${i}`}
-            style={{
-              position: "absolute",
-              left: 5,
-              top: 55 + i * 56,
-              width: 5,
-              height: 5,
-              borderRadius: 3,
-              backgroundColor: [c1, c2, c3][i % 3],
-              opacity: 0.35,
-            }}
-          />
-        ))}
-
-        {/* Right margin colored dots */}
-        {Array.from({ length: 14 }).map((_, i) => (
-          <View
-            key={`rd${i}`}
-            style={{
-              position: "absolute",
-              right: 3,
-              top: 75 + i * 56,
-              width: 5,
-              height: 5,
-              borderRadius: 3,
-              backgroundColor: [c3, c1, c2][i % 3],
-              opacity: 0.35,
-            }}
-          />
-        ))}
-
-        {/* Subject-themed SVG icons — margins */}
-        <View style={{ position: "absolute", top: 120, right: 2 }}>
-          <SubjectIcon icon={icons[0]} size={42} color={c1} opacity={0.14} />
-        </View>
-        <View style={{ position: "absolute", top: 260, left: -2 }}>
-          <SubjectIcon icon={icons[1]} size={36} color={c2} opacity={0.14} />
-        </View>
-        <View style={{ position: "absolute", top: 400, right: 0 }}>
-          <SubjectIcon icon={icons[2]} size={38} color={c3} opacity={0.14} />
-        </View>
-        <View style={{ position: "absolute", top: 520, left: 0 }}>
-          <SubjectIcon icon={icons[3]} size={34} color={c1} opacity={0.14} />
-        </View>
-        <View style={{ position: "absolute", top: 650, right: -1 }}>
-          <SubjectIcon icon={icons[4]} size={40} color={c2} opacity={0.14} />
-        </View>
-        <View style={{ position: "absolute", top: 770, left: -2 }}>
-          <SubjectIcon icon={icons[5]} size={36} color={c3} opacity={0.14} />
-        </View>
-
-        {/* Subject-themed SVG icons — interior scattered */}
-        <View style={{ position: "absolute", top: 60, left: 160 }}>
-          <SubjectIcon icon={icons[0]} size={28} color={c1} opacity={0.09} />
-        </View>
-        <View style={{ position: "absolute", top: 180, right: 100 }}>
-          <SubjectIcon icon={icons[2]} size={24} color={c2} opacity={0.08} />
-        </View>
-        <View style={{ position: "absolute", top: 310, left: 80 }}>
-          <SubjectIcon icon={icons[4]} size={22} color={c3} opacity={0.08} />
-        </View>
-        <View style={{ position: "absolute", top: 440, right: 180 }}>
-          <SubjectIcon icon={icons[1]} size={26} color={c1} opacity={0.08} />
-        </View>
-        <View style={{ position: "absolute", top: 560, left: 240 }}>
-          <SubjectIcon icon={icons[3]} size={24} color={c2} opacity={0.07} />
-        </View>
-        <View style={{ position: "absolute", top: 680, right: 120 }}>
-          <SubjectIcon icon={icons[5]} size={22} color={c3} opacity={0.08} />
-        </View>
-        <View style={{ position: "absolute", top: 350, left: 380 }}>
-          <SubjectIcon icon={icons[0]} size={20} color={c1} opacity={0.07} />
-        </View>
-        <View style={{ position: "absolute", top: 750, left: 300 }}>
-          <SubjectIcon icon={icons[2]} size={20} color={c2} opacity={0.07} />
-        </View>
-
-        {/* Subject-specific background shapes (large watermarks) */}
-        <View style={{ position: "absolute", top: 100, left: 300 }}>
-          <SubjectIcon icon={bgShapes[0]} size={100} color={c1} opacity={0.05} />
-        </View>
-        <View style={{ position: "absolute", top: 350, left: 40 }}>
-          <SubjectIcon icon={bgShapes[0]} size={80} color={c2} opacity={0.04} />
-        </View>
-        <View style={{ position: "absolute", top: 600, right: 60 }}>
-          <SubjectIcon icon={bgShapes[1 % bgShapes.length]} size={90} color={c3} opacity={0.05} />
-        </View>
-        <View style={{ position: "absolute", top: 200, left: 100 }}>
-          <SubjectIcon icon={bgShapes[1 % bgShapes.length]} size={70} color={c1} opacity={0.04} />
-        </View>
-        <View style={{ position: "absolute", top: 500, right: 200 }}>
-          <SubjectIcon icon={bgShapes[0]} size={85} color={c3} opacity={0.04} />
-        </View>
-        <View style={{ position: "absolute", top: 720, left: 200 }}>
-          <SubjectIcon icon={bgShapes[1 % bgShapes.length]} size={75} color={c2} opacity={0.05} />
-        </View>
-
-        {/* Bottom accent line above footer */}
-        <View style={{ position: "absolute", bottom: 16, left: 20, right: 14, height: 2, backgroundColor: c1, borderRadius: 1, opacity: 0.25 }} />
+        {/* Layer 5: Border frame & footer accent */}
+        <View style={{ position: "absolute", top: 8, left: 6, right: 6, bottom: 8, borderWidth: 1, borderColor: c1, borderRadius: 8, opacity: 0.15 }} />
+        <View style={{ position: "absolute", bottom: 16, left: 20, right: 14, height: 2, backgroundColor: c1, borderRadius: 1, opacity: 0.2 }} />
       </View>
     );
   };

@@ -36,7 +36,28 @@ const CASE_STUDY_QUALITY_RULES = `
 QUALITY RULES FOR THE STIMULUS-AND-SUBQUESTIONS BLOCK:
 - The stimulus must include concrete numbers, named entities, and a clear setting that the sub-questions can actually interrogate. Avoid vague generalities.
 - Sub-questions must escalate in difficulty: first 1-2 are direct lookups from the stimulus, last 1-2 require multi-step reasoning or computation that the stimulus supports.
-- All four MCQ options must be plausible. Mix the correct option position across sub-questions (don't always make it option (a)).`;
+- All four MCQ options must be plausible. Mix the correct option position across sub-questions (don't always make it option (a)).
+- When generating MULTIPLE case studies, each one must use a DIFFERENT real-world context (e.g. don't make every case study about athletes - one could be finance, another design, another daily-life logistics, another sports). Different chapter sub-topics where applicable.`;
+
+const ASSERTION_REASON_QUALITY_RULES = `
+QUALITY RULES FOR ASSERTION-REASON SECTION:
+- COVER THE FULL BREADTH of the chapter. Identify the chapter's distinct sub-topics, then distribute items so that no single sub-topic gets more than ~30% of the items (e.g. with 10 items, no sub-topic exceeds 3 items).
+- NO duplicate or near-duplicate Reasons. Each Reason statement (R) must be UNIQUE across all items - both in the concept it cites and in its wording. If item 1's R refers to "parallel lines", no other item's R may refer to "parallel lines".
+- NO mirror items. Don't generate two items that are essentially the same claim phrased oppositely (e.g. "consistent if unique solution" and "inconsistent if no solution" are the same idea - pick one).
+- MIX the four correct outcomes deliberately. Across the items, aim for roughly equal counts of (a), (b), (c), (d) as the right answer. Do NOT make most items (a).
+- AVOID vague meta-claims like "X method is the most accurate" or "X is not suitable" - those are debatable subjective statements, not crisp factual assertions. Stick to concrete properties, theorems, and definitions from the chapter.`;
+
+const GRAMMAR_QUALITY_RULES = `
+QUALITY RULES FOR GRAMMAR SECTION:
+- Spread items across at least 4 different grammatical categories from this list: Tenses, Modals, Reported Speech, Subject-Verb Concord, Determiners, Active/Passive, Articles, Prepositions, Conditionals.
+- No two items should test the same grammatical rule in the same way.
+- Each item is a stand-alone exercise (no carry-over context between items).`;
+
+const VYAKARAN_QUALITY_RULES = `
+खंड B (व्याकरण) के लिए गुणवत्ता नियम:
+- व्याकरण की कम से कम 4 अलग-अलग श्रेणियों में प्रश्न फैलाएं: रचना के आधार पर वाक्य भेद, वाच्य, पद-परिचय, समास, रस, अलंकार, मुहावरे।
+- दो प्रश्न एक ही व्याकरण नियम का एक ही ढंग से परीक्षण नहीं करने चाहिए।
+- प्रत्येक प्रश्न स्वतंत्र अभ्यास हो।`;
 
 function class10Maths(chapterName: string, cfg: WorksheetConfigValues): string {
   return `You are an expert CBSE Class 10 Mathematics worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
@@ -56,7 +77,8 @@ A mixed pool of concept, computation, proof and application questions. No marks 
 ${SECTION_A_QUALITY_RULES}
 
 SECTION B - Assertion and Reason (${cfg.assertionReason} items)
-Use the standard 4-option key (in section instructions, not per item). Each item is a pair: Assertion (A) and Reason (R) - both full statements derived from chapter concepts. Mix outcomes across all four options - do NOT make every answer (a).
+Use the standard 4-option key (in section instructions, not per item). Each item is a pair: Assertion (A) and Reason (R) - both full statements derived from chapter concepts.
+${ASSERTION_REASON_QUALITY_RULES}
 
 SECTION C - Case Study (${cfg.caseStudy} case studies)
 Each case study has a SUBSTANTIAL real-world stimulus of 150-200 words (8-12 lines), drawing from sports, finance, design, structures, daily life — followed by 4 MCQ sub-questions (4 options each). The stimulus must establish a concrete scenario with multiple named quantities, parties, or constraints so the sub-questions have ample material to interrogate.
@@ -114,7 +136,8 @@ A mixed pool of concept, explanation, application and reasoning questions. Inclu
 ${SECTION_A_QUALITY_RULES}
 
 SECTION B - Assertion and Reason (${cfg.assertionReason} items)
-Standard 4-option key (in section instructions). Each item is a pair: Assertion (A) and Reason (R) - both full statements from chapter concepts. Mix outcomes across all four options.
+Standard 4-option key (in section instructions). Each item is a pair: Assertion (A) and Reason (R) - both full statements from chapter concepts.
+${ASSERTION_REASON_QUALITY_RULES}
 
 SECTION C - Case Study (${cfg.caseStudy} case studies)
 Each case study has a SUBSTANTIAL scientific stimulus of 150-200 words (8-12 lines) — an experimental setup, real-world phenomenon, observation table, or principle in action — followed by 4 MCQ sub-questions (4 options each). Include data, numbers, specific observations, and named entities so the sub-questions have rich material to probe.
@@ -172,7 +195,8 @@ A mixed pool of factual recall, cause-effect and analytical questions. Cover the
 ${SECTION_A_QUALITY_RULES}
 
 SECTION B - Assertion and Reason (${cfg.assertionReason} items)
-Standard 4-option key. Assertion is a historical/geographical/civic/economic claim; Reason explains. Mix outcomes across all four options.
+Standard 4-option key. Assertion is a historical/geographical/civic/economic claim; Reason explains.
+${ASSERTION_REASON_QUALITY_RULES}
 
 SECTION C - Source-Based Questions (${cfg.caseStudy} source extracts)
 Each item has a 150-200 word source extract (8-12 lines): a quoted speech, treaty excerpt, news report, data passage, or NCERT-style historical narrative — period-authentic and rich enough to support multi-step interpretation. Followed by 4 sub-questions (3 MCQ + 1 short answer OR 4 MCQs).
@@ -235,6 +259,7 @@ Each item tests a grammatical concept relevant to Class 10 CBSE (Tenses, Reporte
 - an error-correction sentence, OR
 - a transformation task.
 Stand-alone short items, no options.
+${GRAMMAR_QUALITY_RULES}
 
 SECTION C - Literature Extract (${cfg.caseStudy} extracts)
 Each extract is a 4-7 line passage (50-90 words) drawn directly from the chapter text — prose or poetry as relevant. Quote the chapter text faithfully; do not paraphrase. Length is naturally constrained by the source text and should NOT be artificially padded. Each extract is followed by 4-5 sub-questions: 2-3 MCQ-style (4 options each) testing comprehension of the extract, and 1-2 short-answer sub-questions testing inference or theme.
@@ -293,6 +318,7 @@ ${SECTION_A_QUALITY_RULES}
 
 खंड B - व्याकरण (${cfg.assertionReason} प्रश्न)
 कक्षा 10 के पाठ्यक्रम से प्रासंगिक व्याकरण: रचना के आधार पर वाक्य भेद, वाच्य, पद-परिचय, रस, समास, अलंकार, मुहावरे। प्रत्येक प्रश्न रिक्त-स्थान, पहचान, या रूपांतरण कार्य हो। कोई विकल्प नहीं।
+${VYAKARAN_QUALITY_RULES}
 
 खंड C - अपठित बोध / पाठ्यांश आधारित प्रश्न (${cfg.caseStudy} गद्यांश/पद्यांश)
 प्रत्येक के लिए पाठ से 5-8 पंक्तियों का एक अंश (60-100 शब्द) दीजिए और 4-5 उप-प्रश्न दीजिए: 2-3 MCQ (4 विकल्प प्रत्येक) तथा 1-2 लघु उत्तरीय। पाठ का अंश यथावत् उद्धृत करें - व्याख्या नहीं।

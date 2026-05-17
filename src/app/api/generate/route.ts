@@ -1,26 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { inngest } from "@/inngest/client";
-import type { GenerateRequest, QuestionCounts } from "@/types";
-import { QUESTION_COUNT_DEFAULTS } from "@/types";
+import { defaultConfigValues, getWorksheetConfigSpec } from "@/lib/worksheet-configs";
+import type { GenerateRequest, WorksheetConfigValues } from "@/types";
 
 export async function POST(req: NextRequest) {
   try {
     const body: GenerateRequest = await req.json();
-    const { chapterId, schoolId, questionCounts } = body;
-    const counts: QuestionCounts = {
-      ...QUESTION_COUNT_DEFAULTS,
-      ...questionCounts,
-    };
+    const { chapterId, schoolId, config: clientConfig } = body;
 
     if (!chapterId || !schoolId) {
       return NextResponse.json({ success: false, error: "chapterId and schoolId are required" }, { status: 400 });
     }
 
-    // Quick validation — chapter exists
+    // Load chapter -> subject -> grade so we know which config spec to use
     const { data: chapter, error: chapterError } = await supabaseAdmin
       .from("chapters")
-      .select("id")
+      .select("id, subject:subjects(slug, grade:grades(number))")
       .eq("id", chapterId)
       .single();
 
@@ -28,7 +24,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Chapter not found" }, { status: 404 });
     }
 
-    // Quick validation — school exists
+    const subjectData = chapter.subject as unknown as { slug: string; grade: { number: number } };
+    const spec = getWorksheetConfigSpec(subjectData.grade.number, subjectData.slug);
+    const config: WorksheetConfigValues = { ...defaultConfigValues(spec), ...clientConfig };
+
     const { data: school, error: schoolError } = await supabaseAdmin
       .from("schools")
       .select("id")
@@ -39,7 +38,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "School not found" }, { status: 404 });
     }
 
-    // Quick validation — source materials exist
     const { count: materialCount } = await supabaseAdmin
       .from("source_materials")
       .select("id", { count: "exact", head: true })
@@ -52,7 +50,6 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Insert a PENDING worksheet row
     const { data: worksheet, error: insertError } = await supabaseAdmin
       .from("worksheets")
       .insert({
@@ -72,14 +69,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Fire Inngest event — processing happens async with no time limit
     await inngest.send({
       name: "worksheet/generate.requested",
       data: {
         worksheetId: worksheet.id,
         chapterId,
         schoolId,
-        questionCounts: counts,
+        config,
       },
     });
 

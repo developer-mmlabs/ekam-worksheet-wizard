@@ -171,35 +171,25 @@ export interface WorksheetPDFData {
 }
 
 // ============================================================
-// Question Count Configuration
+// Worksheet Configuration (per grade + subject)
 // ============================================================
 
-export interface QuestionCounts {
-  mcq: number;
-  fillInTheBlanks: number;
-  matchTheFollowing: number;
-  veryShort: number;
-  shortAnswer: number;
-  longAnswer: number;
+export interface WorksheetControl {
+  id: string; // key in config values map
+  label: string;
+  default: number;
+  min: number;
+  max: number;
+  hint?: string; // optional secondary label (e.g. "1 mark each")
 }
 
-export const QUESTION_COUNT_DEFAULTS: QuestionCounts = {
-  mcq: 12,
-  fillInTheBlanks: 0,
-  matchTheFollowing: 0,
-  veryShort: 8,
-  shortAnswer: 6,
-  longAnswer: 4,
-};
+export interface WorksheetConfigSpec {
+  controls: WorksheetControl[];
+  helperText?: string;
+}
 
-export const QUESTION_COUNT_MINS: QuestionCounts = {
-  mcq: 8,
-  fillInTheBlanks: 0,
-  matchTheFollowing: 0,
-  veryShort: 5,
-  shortAnswer: 3,
-  longAnswer: 2,
-};
+// Values keyed by control id (e.g. { sectionA: 30, assertionReason: 6, caseStudy: 2 })
+export type WorksheetConfigValues = Record<string, number>;
 
 // ============================================================
 // API Types
@@ -208,7 +198,7 @@ export const QUESTION_COUNT_MINS: QuestionCounts = {
 export interface GenerateRequest {
   chapterId: string;
   schoolId: string;
-  questionCounts?: QuestionCounts;
+  config?: WorksheetConfigValues;
 }
 
 export interface GenerateResponse {

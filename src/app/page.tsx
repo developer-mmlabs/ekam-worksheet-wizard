@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
-import type { Grade, Subject, Chapter, WorksheetStatus } from "@/types";
-import { QUESTION_COUNT_DEFAULTS, QUESTION_COUNT_MINS } from "@/types";
+import type { Grade, Subject, Chapter, WorksheetStatus, WorksheetConfigValues } from "@/types";
+import { getWorksheetConfigSpec, defaultConfigValues } from "@/lib/worksheet-configs";
 
 export default function GeneratePage() {
   const [grades, setGrades] = useState<Grade[]>([]);
@@ -14,15 +14,8 @@ export default function GeneratePage() {
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedChapter, setSelectedChapter] = useState("");
 
-  const [mcqCount, setMcqCount] = useState(QUESTION_COUNT_DEFAULTS.mcq);
-  const [fillBlanksCount, setFillBlanksCount] = useState(QUESTION_COUNT_DEFAULTS.fillInTheBlanks);
-  const [matchCount, setMatchCount] = useState(QUESTION_COUNT_DEFAULTS.matchTheFollowing);
-  const [veryShortCount, setVeryShortCount] = useState(QUESTION_COUNT_DEFAULTS.veryShort);
-  const [shortAnswerCount, setShortAnswerCount] = useState(QUESTION_COUNT_DEFAULTS.shortAnswer);
-  const [longAnswerCount, setLongAnswerCount] = useState(QUESTION_COUNT_DEFAULTS.longAnswer);
+  const [configValues, setConfigValues] = useState<WorksheetConfigValues>({});
   const [showOptions, setShowOptions] = useState(false);
-
-  const totalQuestions = mcqCount + fillBlanksCount + matchCount + veryShortCount + shortAnswerCount + longAnswerCount;
 
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState("");
@@ -32,7 +25,30 @@ export default function GeneratePage() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Clean up polling on unmount
+  // Derive the active config spec from the selected grade + subject objects
+  const selectedGradeObj = useMemo(
+    () => grades.find((g) => g.id === selectedGrade) ?? null,
+    [grades, selectedGrade],
+  );
+  const selectedSubjectObj = useMemo(
+    () => subjects.find((s) => s.id === selectedSubject) ?? null,
+    [subjects, selectedSubject],
+  );
+  const configSpec = useMemo(() => {
+    if (!selectedGradeObj || !selectedSubjectObj) return null;
+    return getWorksheetConfigSpec(selectedGradeObj.number, selectedSubjectObj.slug);
+  }, [selectedGradeObj, selectedSubjectObj]);
+
+  // When the (grade, subject) combination changes, reset config values to that spec's defaults
+  useEffect(() => {
+    if (configSpec) setConfigValues(defaultConfigValues(configSpec));
+  }, [configSpec]);
+
+  const totalQuestions = useMemo(
+    () => Object.values(configValues).reduce((sum, n) => sum + (n || 0), 0),
+    [configValues],
+  );
+
   useEffect(() => {
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
@@ -55,7 +71,7 @@ export default function GeneratePage() {
     pollingRef.current = setInterval(async () => {
       try {
         const res = await fetch(`/api/generate/status?id=${worksheetId}`);
-        if (!res.ok) return; // retry on next tick
+        if (!res.ok) return;
 
         const data = await res.json();
         const status: WorksheetStatus = data.status;
@@ -81,7 +97,6 @@ export default function GeneratePage() {
       }
     }, 30_000);
 
-    // Safety: stop polling after 15 minutes (Inngest handles long-running jobs)
     timeoutRef.current = setTimeout(() => {
       stopPolling();
       setError("Generation is taking longer than expected. Check the admin dashboard for your worksheet.");
@@ -89,7 +104,6 @@ export default function GeneratePage() {
     }, 900_000);
   }
 
-  // Load grades on mount
   useEffect(() => {
     async function loadGrades() {
       const { data } = await supabase
@@ -101,7 +115,6 @@ export default function GeneratePage() {
     loadGrades();
   }, []);
 
-  // Load subjects when grade changes
   useEffect(() => {
     if (!selectedGrade) {
       setSubjects([]);
@@ -119,7 +132,6 @@ export default function GeneratePage() {
     loadSubjects();
   }, [selectedGrade]);
 
-  // Load chapters when subject changes
   useEffect(() => {
     if (!selectedSubject) {
       setChapters([]);
@@ -137,6 +149,10 @@ export default function GeneratePage() {
     loadChapters();
   }, [selectedSubject]);
 
+  function updateControl(id: string, value: number) {
+    setConfigValues((prev) => ({ ...prev, [id]: value }));
+  }
+
   async function handleGenerate() {
     if (!selectedChapter) return;
 
@@ -146,7 +162,6 @@ export default function GeneratePage() {
     setProgress("Submitting generation request...");
 
     try {
-      // Get school (most recently updated)
       const schoolRes = await fetch("/api/school-settings");
       if (!schoolRes.ok) {
         throw new Error("No school configured. Go to Admin > Settings first.");
@@ -157,21 +172,13 @@ export default function GeneratePage() {
         throw new Error("No school configured. Go to Admin > Settings first.");
       }
 
-      // Submit generation request (returns immediately)
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chapterId: selectedChapter,
           schoolId: school.id,
-          questionCounts: {
-            mcq: mcqCount,
-            fillInTheBlanks: fillBlanksCount,
-            matchTheFollowing: matchCount,
-            veryShort: veryShortCount,
-            shortAnswer: shortAnswerCount,
-            longAnswer: longAnswerCount,
-          },
+          config: configValues,
         }),
       });
 
@@ -193,8 +200,6 @@ export default function GeneratePage() {
       }
 
       setProgress("Generating questions with AI (this may take up to 2 minutes)...");
-
-      // Start polling for completion
       pollForCompletion(result.worksheetId);
 
     } catch (err) {
@@ -227,9 +232,7 @@ export default function GeneratePage() {
             >
               <option value="">Select a grade...</option>
               {grades.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
+                <option key={g.id} value={g.id}>{g.name}</option>
               ))}
             </select>
           </div>
@@ -251,9 +254,7 @@ export default function GeneratePage() {
                 {selectedGrade ? "Select a subject..." : "Select a grade first"}
               </option>
               {subjects.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
+                <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </div>
@@ -281,8 +282,8 @@ export default function GeneratePage() {
             </select>
           </div>
 
-          {/* Question Options */}
-          {selectedChapter && (
+          {/* Config-driven Question Options */}
+          {selectedChapter && configSpec && (
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <button
                 type="button"
@@ -301,92 +302,41 @@ export default function GeneratePage() {
               </button>
               {showOptions && (
                 <div className="p-4 space-y-4">
+                  {configSpec.helperText && (
+                    <p className="text-xs text-gray-500 italic">{configSpec.helperText}</p>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
-                        MCQ (1 mark each)
-                      </label>
-                      <input
-                        type="number"
-                        value={mcqCount || ""}
-                        min={QUESTION_COUNT_MINS.mcq}
-                        onChange={(e) => setMcqCount(parseInt(e.target.value) || 0)}
-                        onBlur={() => setMcqCount((v) => Math.max(QUESTION_COUNT_MINS.mcq, v))}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
-                        Fill in the Blanks (1 mark each)
-                      </label>
-                      <input
-                        type="number"
-                        value={fillBlanksCount || ""}
-                        min={QUESTION_COUNT_MINS.fillInTheBlanks}
-                        onChange={(e) => setFillBlanksCount(parseInt(e.target.value) || 0)}
-                        onBlur={() => setFillBlanksCount((v) => Math.max(QUESTION_COUNT_MINS.fillInTheBlanks, v))}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
-                        Match the Following (4 marks each)
-                      </label>
-                      <input
-                        type="number"
-                        value={matchCount || ""}
-                        min={QUESTION_COUNT_MINS.matchTheFollowing}
-                        onChange={(e) => setMatchCount(parseInt(e.target.value) || 0)}
-                        onBlur={() => setMatchCount((v) => Math.max(QUESTION_COUNT_MINS.matchTheFollowing, v))}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
-                        Very Short Answer (1 mark each)
-                      </label>
-                      <input
-                        type="number"
-                        value={veryShortCount || ""}
-                        min={QUESTION_COUNT_MINS.veryShort}
-                        onChange={(e) => setVeryShortCount(parseInt(e.target.value) || 0)}
-                        onBlur={() => setVeryShortCount((v) => Math.max(QUESTION_COUNT_MINS.veryShort, v))}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
-                        Short Answer (3 marks each)
-                      </label>
-                      <input
-                        type="number"
-                        value={shortAnswerCount || ""}
-                        min={QUESTION_COUNT_MINS.shortAnswer}
-                        onChange={(e) => setShortAnswerCount(parseInt(e.target.value) || 0)}
-                        onBlur={() => setShortAnswerCount((v) => Math.max(QUESTION_COUNT_MINS.shortAnswer, v))}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
-                        Long Answer (5 marks each)
-                      </label>
-                      <input
-                        type="number"
-                        value={longAnswerCount || ""}
-                        min={QUESTION_COUNT_MINS.longAnswer}
-                        onChange={(e) => setLongAnswerCount(parseInt(e.target.value) || 0)}
-                        onBlur={() => setLongAnswerCount((v) => Math.max(QUESTION_COUNT_MINS.longAnswer, v))}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
+                    {configSpec.controls.map((control) => {
+                      const value = configValues[control.id] ?? control.default;
+                      return (
+                        <div key={control.id}>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">
+                            {control.label}
+                            {control.hint && (
+                              <span className="text-gray-400 font-normal"> ({control.hint})</span>
+                            )}
+                          </label>
+                          <input
+                            type="number"
+                            value={value || ""}
+                            min={control.min}
+                            max={control.max}
+                            onChange={(e) => updateControl(control.id, parseInt(e.target.value) || 0)}
+                            onBlur={() =>
+                              updateControl(
+                                control.id,
+                                Math.min(control.max, Math.max(control.min, value)),
+                              )
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+                  <div className="pt-2 border-t border-gray-100">
                     <span className="text-sm font-medium text-gray-700">
                       Total: {totalQuestions} questions
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      {mcqCount * 1 + fillBlanksCount * 1 + matchCount * 4 + veryShortCount * 1 + shortAnswerCount * 3 + longAnswerCount * 5} marks
                     </span>
                   </div>
                 </div>
@@ -403,7 +353,6 @@ export default function GeneratePage() {
             {generating ? "Generating..." : "Generate Worksheet"}
           </button>
 
-          {/* Progress */}
           {generating && (
             <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg">
               <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
@@ -411,14 +360,12 @@ export default function GeneratePage() {
             </div>
           )}
 
-          {/* Error */}
           {error && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
 
-          {/* PDF Preview & Download */}
           {pdfUrl && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">

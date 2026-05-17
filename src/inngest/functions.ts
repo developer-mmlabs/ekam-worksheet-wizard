@@ -3,14 +3,18 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { generateQuestions } from "@/lib/ai/question-generator";
 import { generateWorksheetPDF } from "@/lib/pdf/generator";
 import { getTheme } from "@/lib/pdf/templates/themes";
-import type { Grade, Subject, Chapter, School, GradeBand, QuestionCounts } from "@/types";
-import { QUESTION_COUNT_DEFAULTS } from "@/types";
+import { defaultConfigValues, getWorksheetConfigSpec } from "@/lib/worksheet-configs";
+import type { Grade, Subject, Chapter, School, GradeBand, WorksheetConfigValues } from "@/types";
 
 export const processWorksheet = inngest.createFunction(
   { id: "process-worksheet", triggers: [{ event: "worksheet/generate.requested" }] },
   async ({ event, step }) => {
-    const { worksheetId, chapterId, schoolId, questionCounts } = event.data;
-    const counts: QuestionCounts = { ...QUESTION_COUNT_DEFAULTS, ...questionCounts };
+    const { worksheetId, chapterId, schoolId, config: incomingConfig } = event.data as {
+      worksheetId: string;
+      chapterId: string;
+      schoolId: string;
+      config?: WorksheetConfigValues;
+    };
 
     // Step 1: Mark as processing and load all metadata
     const metadata = await step.run("load-metadata", async () => {
@@ -77,6 +81,11 @@ export const processWorksheet = inngest.createFunction(
     const subjectData = chapter.subject as unknown as Subject & { grade: Grade };
     const gradeData = subjectData.grade;
 
+    const config: WorksheetConfigValues = {
+      ...defaultConfigValues(getWorksheetConfigSpec(gradeData.number, subjectData.slug)),
+      ...incomingConfig,
+    };
+
     const questions = await step.run("generate-questions", async () => {
       return await generateQuestions(
         imageBase64s,
@@ -87,7 +96,7 @@ export const processWorksheet = inngest.createFunction(
           subjectName: subjectData.name,
           chapterName: chapter.name as string,
         },
-        counts,
+        config,
       );
     });
 

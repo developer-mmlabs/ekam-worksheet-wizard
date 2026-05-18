@@ -32,6 +32,26 @@ QUALITY RULES FOR SECTION A:
 - Order by cognitive level: first third = recall/definitions, middle third = computation/standard application, last third = word problems/proofs/HOTS.
 - Use a wide variety of directives: "Find", "Solve", "Prove", "Show that", "Verify", "State", "Justify", "Construct", "Explain why", "Distinguish between", "Give an example of".`;
 
+const PDF_SAFE_NOTATION = `
+PDF-SAFE NOTATION (CRITICAL — these glyphs DISAPPEAR from the rendered output):
+The PDF font (Helvetica) does NOT render Unicode math symbols. Any of the following will silently vanish, producing broken output like "200 3 meters" instead of "200 sqrt(3) meters":
+- √, ², ³, ⁰, ⁴, ⁵, ⁶, ⁷, ⁸, ⁹ (superscripts), ₀, ₁, ₂, ₃ (subscripts), π, °, ×, ÷, ≈, ≤, ≥, ≠, ±, ∞, ∑, ∫, ∆, θ, α, β, γ, ½, ⅓, ¼, ¾, ' (prime), " (double prime).
+You MUST use ASCII equivalents in ALL text (stimulus, sub-questions, options, assertion / reason, answers):
+- Square root: sqrt(3), sqrt(15), sqrt(x^2 + 1) — NEVER √3 or √15.
+- Powers: x^2, x^3, r^2, 10^6 — NEVER x², x³, r².
+- Subscripts: H2O, CO2, x_1, x_2 — NEVER H₂O, x₁.
+- Pi: pi or 22/7 — NEVER π. Example: "area = pi * r^2" not "area = πr²".
+- Degree: write "degrees" or " deg". Example: "30 degrees" or "30 deg" — NEVER 30°.
+- Multiplication: * or ×-as-letter "x" when unambiguous. Prefer "*" in formulas: "3 * 4" not "3 × 4".
+- Division: / — NEVER ÷. Example: "22/7" not "22÷7".
+- Approximate: approx or ~= — NEVER ≈.
+- Less / greater than or equal: <=, >= — NEVER ≤, ≥.
+- Plus-minus: +/- — NEVER ±.
+- Fractions: write as a/b — NEVER ½, ¾.
+- Greek letters: theta, alpha, beta, gamma, delta — NEVER θ, α, β, γ, Δ.
+- Angle marks / primes: write "minute" / "second" in words; do not use ' or ".
+Self-check before submitting: scan every option, every question, every stimulus for any non-ASCII math glyph. If any are present, rewrite. This is not a style preference — it is a hard rendering constraint.`;
+
 const CASE_STUDY_QUALITY_RULES = `
 QUALITY RULES FOR THE STIMULUS-AND-SUBQUESTIONS BLOCK:
 - The stimulus must include concrete numbers, named entities, and a clear setting that the sub-questions can actually interrogate. Avoid vague generalities.
@@ -348,8 +368,8 @@ ${SVG_MATH_PATTERNS}
 
 GLOBAL RULES:
 - Every question must be directly derived from the chapter content in the provided textbook pages.
-- Mathematical notation as plain text (x^2, sqrt(15), 22/7). No LaTeX.
 - Output PURE JSON only - no markdown fences, no commentary, no preamble.
+${PDF_SAFE_NOTATION}
 
 VERIFICATION before responding:
 - sections[0].questions.length === ${cfg.sectionA}
@@ -416,8 +436,9 @@ Science-specific guidance (when an image IS warranted):
 GLOBAL RULES:
 - Every question directly derived from the chapter content in the provided textbook pages.
 - Balance Physics/Chemistry/Biology if the chapter touches multiple.
-- Chemical formulae and equations as plain text (e.g., 2H2 + O2 -> 2H2O).
+- Chemical formulae and equations as plain text: 2H2 + O2 -> 2H2O (H2O, CO2, NaCl, not H₂O, CO₂).
 - Output PURE JSON only - no markdown fences, no commentary.
+${PDF_SAFE_NOTATION}
 
 VERIFICATION before responding:
 - sections[0].questions.length === ${cfg.sectionA}

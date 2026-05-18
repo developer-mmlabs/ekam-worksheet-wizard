@@ -200,13 +200,84 @@ SVG:
   ]
 }
 
+PATTERN F — 3D solids (cylinder, cone, sphere, hemisphere)
+CRITICAL: A hemisphere is HALF a sphere → in 2D it is drawn as a SEMICIRCLE (half-disk), NEVER a full circle. A sphere is a circle. A cylinder is a rectangle with elliptical or semicircular curves at the top and bottom for 3D feel. A cone is an isoceles triangle, optionally with a flat ellipse at its base.
+
+For a vertical CYLINDER (height H, radius R), place at center (100, mid). Body is a rectangle of width 2*svg_R, height svg_H. Top is a full thin ellipse (rx=svg_R, ry=svg_R/3 or smaller); bottom is a half-ellipse arc (front-facing only, since the back is hidden by the body).
+
+For a CONE (height H, base radius R, apex at top or bottom — context dependent), draw two slanted lines from the apex to the base ends, plus a flat ellipse at the base.
+
+For a HEMISPHERE (radius R), draw a single semicircle. Use SVG path arc: "M (cx-R) cy A R R 0 0 1 (cx+R) cy" for an upward bulge, or "0 0 0 0" for downward.
+
+PATTERN G — Composite solids
+CRITICAL: When two solids are combined (cylinder + hemisphere, cone + hemisphere, cylinder + cone), they MUST share the same diameter at the junction. Match svg_R exactly across the components. Align all components vertically on the center axis x=100. The outline must be CONTINUOUS — no gaps, no overlapping circles.
+
+G.1 — Cylinder with hemispherical caps at BOTH ends (water tank, capsule):
+Given cylinder height H_cyl and shared radius R. Total height = H_cyl + 2R.
+Scale s so total height ≈ 100 viewBox units. svg_R = R*s; svg_cyl_H = H_cyl*s.
+Center at (100, 100). Cylinder body sides from y = (100 - svg_cyl_H/2) to (100 + svg_cyl_H/2), at x = 100±svg_R.
+Top hemisphere bulges UP from cylinder top edge; bottom hemisphere bulges DOWN from cylinder bottom edge.
+Example for H_cyl=2, R=0.5 (total height 3): s=33 → svg_R=16, svg_cyl_H=66. Cylinder y=[67, 133].
+SVG:
+{
+  "viewBox": "0 0 200 200",
+  "shapes": [
+    { "type": "line", "x1": 84, "y1": 67, "x2": 84, "y2": 133, "stroke": "#2563eb", "strokeWidth": 1.5 },
+    { "type": "line", "x1": 116, "y1": 67, "x2": 116, "y2": 133, "stroke": "#2563eb", "strokeWidth": 1.5 },
+    { "type": "path", "d": "M 84 67 A 16 16 0 0 1 116 67", "stroke": "#2563eb", "strokeWidth": 1.5, "fill": "none" },
+    { "type": "path", "d": "M 84 133 A 16 16 0 0 0 116 133", "stroke": "#2563eb", "strokeWidth": 1.5, "fill": "none" },
+    { "type": "text", "x": 124, "y": 105, "text": "2 m", "fontSize": 9 },
+    { "type": "text", "x": 100, "y": 175, "text": "diameter 1 m", "fontSize": 9, "textAnchor": "middle" }
+  ]
+}
+
+G.2 — Cone surmounted by hemisphere (toy, ice-cream shape):
+"Surmounted by" → hemisphere is ON TOP of the cone, with the cone apex pointing DOWN.
+Given: shared radius R, cone height H_cone. Total height = R + H_cone.
+Scale s. svg_R = R*s; svg_cone_H = H_cone*s. Hemisphere flat edge sits at y = 100 - svg_cone_H/2 + svg_R; cone apex at y = 100 + svg_cone_H/2 + svg_R.
+Simplest: place hemisphere flat at y = top_of_cone_base, cone apex below it.
+Example for R=4, H_cone=6 (total height 10): s=9 → svg_R=36, svg_cone_H=54.
+Hemisphere flat at y=100; bulges up to y=64. Cone from (64,100) and (136,100) meeting apex at (100, 154).
+SVG:
+{
+  "viewBox": "0 0 200 200",
+  "shapes": [
+    { "type": "path", "d": "M 64 100 A 36 36 0 0 1 136 100", "stroke": "#2563eb", "strokeWidth": 1.5, "fill": "none" },
+    { "type": "line", "x1": 64, "y1": 100, "x2": 100, "y2": 154, "stroke": "#2563eb", "strokeWidth": 1.5 },
+    { "type": "line", "x1": 136, "y1": 100, "x2": 100, "y2": 154, "stroke": "#2563eb", "strokeWidth": 1.5 },
+    { "type": "line", "x1": 64, "y1": 100, "x2": 136, "y2": 100, "stroke": "#2563eb", "strokeWidth": 1, "strokeDasharray": "2 2" },
+    { "type": "text", "x": 145, "y": 80, "text": "hemisphere", "fontSize": 8 },
+    { "type": "text", "x": 145, "y": 135, "text": "cone H=6", "fontSize": 8 }
+  ]
+}
+
+G.3 — Cylinder with hemispherical base (juice glass):
+Cylinder body open at top; closed at the bottom by a hemisphere bulging DOWN.
+Given: cylinder height H_cyl, shared radius R. Total height = H_cyl + R.
+Place top of cylinder near y=40, cylinder body to y = 40 + svg_cyl_H, hemisphere bulges down to y = 40 + svg_cyl_H + svg_R.
+Top of cylinder shown as an ellipse (open mouth, viewed from a slight angle).
+Example for H_cyl=10, R=3 (total height 13): s=8 → svg_R=24, svg_cyl_H=80.
+Cylinder body y=[40, 120]. Hemisphere from (76, 120) bulging down to (124, 120) returning, max y ≈ 144.
+SVG:
+{
+  "viewBox": "0 0 200 200",
+  "shapes": [
+    { "type": "line", "x1": 76, "y1": 40, "x2": 76, "y2": 120, "stroke": "#2563eb", "strokeWidth": 1.5 },
+    { "type": "line", "x1": 124, "y1": 40, "x2": 124, "y2": 120, "stroke": "#2563eb", "strokeWidth": 1.5 },
+    { "type": "path", "d": "M 76 40 A 24 7 0 0 0 124 40 A 24 7 0 0 0 76 40", "stroke": "#2563eb", "strokeWidth": 1.5, "fill": "none" },
+    { "type": "path", "d": "M 76 120 A 24 24 0 0 0 124 120", "stroke": "#2563eb", "strokeWidth": 1.5, "fill": "none" },
+    { "type": "text", "x": 132, "y": 85, "text": "10 cm", "fontSize": 9 },
+    { "type": "text", "x": 100, "y": 175, "text": "diameter 6 cm", "fontSize": 9, "textAnchor": "middle" }
+  ]
+}
+
 GENERAL RULES:
-- ALWAYS label key quantities (radius, chord, angle, side lengths) with "text" shapes positioned near the relevant element.
+- ALWAYS label key quantities (radius, chord, angle, side lengths, height, diameter) with "text" shapes positioned near the relevant element.
 - Use stroke color "#2563eb" (blue) for the main shape; "#1f2937" (dark grey) for auxiliary lines; "#9ca3af" (light grey) for axes; "#dc2626" (red) or "#f59e0b" (amber) for marked points.
-- Use strokeDasharray "3 2" for dashed lines (perpendiculars, auxiliary constructions).
+- Use strokeDasharray "3 2" for dashed lines (perpendiculars, auxiliary constructions); "2 2" for hidden / joining edges in 3D solids.
 - A small filled circle of r=2-3 at intersection / marked points.
 - A small unfilled rect (6x6) at right-angle markers.
-- For patterns not covered above, follow the same compute-first approach: derive the quantities, scale to fit ~80 viewBox units for the largest dimension, then translate to SVG coordinates.`;
+- For patterns not covered above, follow the same compute-first approach: derive the quantities, scale to fit ~80-100 viewBox units for the largest dimension, then translate to SVG coordinates.`;
 
 const ASSERTION_REASON_QUALITY_RULES = `
 QUALITY RULES FOR ASSERTION-REASON SECTION:

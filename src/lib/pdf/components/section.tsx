@@ -200,7 +200,7 @@ function createStyles(theme: TemplateTheme) {
       alignItems: "flex-start",
     },
     questionNumber: {
-      width: 18,
+      width: 26,
       fontSize: 8.5,
       fontWeight: "bold",
       fontFamily: PDF_FONT,

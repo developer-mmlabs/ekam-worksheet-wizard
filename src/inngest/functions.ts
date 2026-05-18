@@ -1,6 +1,7 @@
 import { inngest } from "./client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { generateQuestions } from "@/lib/ai/question-generator";
+import { generateImage, isImageGenAvailable } from "@/lib/image-gen";
 import { generateWorksheetPDF } from "@/lib/pdf/generator";
 import { getTheme } from "@/lib/pdf/templates/themes";
 import { defaultConfigValues, getWorksheetConfigSpec } from "@/lib/worksheet-configs";
@@ -99,6 +100,51 @@ export const processWorksheet = inngest.createFunction(
         config,
       );
     });
+
+    // Step 3.5: Generate case-study images in parallel (if any imagePrompts emitted)
+    if (await isImageGenAvailable()) {
+      const imageJobs: { sectionIdx: number; csIdx: number; prompt: string }[] = [];
+      questions.sections.forEach((section, sIdx) => {
+        section.caseStudies?.forEach((cs, csIdx) => {
+          if (cs.imagePrompt && cs.imagePrompt.trim().length > 0) {
+            imageJobs.push({ sectionIdx: sIdx, csIdx, prompt: cs.imagePrompt });
+          }
+        });
+      });
+
+      if (imageJobs.length > 0) {
+        const imageResults = await Promise.all(
+          imageJobs.map((job, idx) =>
+            step.run(`generate-image-${idx}`, async () => {
+              try {
+                const img = await generateImage(job.prompt);
+                const path = `images/${worksheetId}/case-${job.sectionIdx}-${job.csIdx}.png`;
+                const { error: uploadError } = await supabaseAdmin.storage
+                  .from("worksheets")
+                  .upload(path, img.buffer, { contentType: img.mimeType, upsert: true });
+                if (uploadError) {
+                  console.warn(`Image upload failed for case ${job.sectionIdx}-${job.csIdx}: ${uploadError.message}`);
+                  return null;
+                }
+                const { data: { publicUrl } } = supabaseAdmin.storage
+                  .from("worksheets")
+                  .getPublicUrl(path);
+                return { sectionIdx: job.sectionIdx, csIdx: job.csIdx, url: publicUrl };
+              } catch (err) {
+                console.warn(`Image gen failed for case ${job.sectionIdx}-${job.csIdx}:`, err);
+                return null;
+              }
+            }),
+          ),
+        );
+
+        imageResults.forEach((r) => {
+          if (r && questions.sections[r.sectionIdx]?.caseStudies?.[r.csIdx]) {
+            questions.sections[r.sectionIdx].caseStudies![r.csIdx].imageUrl = r.url;
+          }
+        });
+      }
+    }
 
     // Step 4: Generate PDF
     const pdfBuffer = await step.run("generate-pdf", async () => {

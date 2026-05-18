@@ -102,6 +102,8 @@ export interface CaseStudy {
   number: number;
   stimulus: string;
   questions: Question[];
+  imagePrompt?: string; // LLM-emitted scenic illustration prompt (no diagrams/labels)
+  imageUrl?: string; // Populated after image gen + upload; consumed by PDF renderer
 }
 
 export interface Question {

@@ -39,6 +39,20 @@ QUALITY RULES FOR THE STIMULUS-AND-SUBQUESTIONS BLOCK:
 - All four MCQ options must be plausible. Mix the correct option position across sub-questions (don't always make it option (a)).
 - When generating MULTIPLE case studies, each one must use a DIFFERENT real-world context (e.g. don't make every case study about athletes - one could be finance, another design, another daily-life logistics, another sports). Different chapter sub-topics where applicable.`;
 
+const IMAGE_PROMPT_RULES = `
+IMAGE PROMPT RULES (for the "imagePrompt" field on each case study):
+- Describe a SCENIC illustration of the real-world setting from the stimulus (people, objects, places, activities). 1-2 sentences.
+- The image must be illustrative/decorative ONLY - it must NEVER be a diagram, chart, graph, map, schematic, equation, or anything that requires labels, numbers, or technical accuracy.
+- Do NOT mention text, numbers, formulas, captions, or labels in the prompt. The image must contain no readable text.
+- Do NOT name real public figures or branded products.
+- Indian context preferred (Indian people, Indian settings, Indian everyday life) when the chapter content is culturally neutral.
+- Good: "A young student flying a colorful diamond kite in an open park on a sunny afternoon, kite string stretched against the blue sky"
+- Good: "Three farmers harvesting wheat in a golden field at sunset, with bullock carts in the background"
+- Bad: "A circuit diagram with resistor labeled R1 and battery"  (this is a diagram, not a scenic illustration)
+- Bad: "A graph showing the relationship between x and y axes"  (this is a chart)
+- Bad: "A photo of Jawaharlal Nehru"  (named public figure)
+If the case study's content is fundamentally diagrammatic (e.g. circuit analysis, ray optics) and no meaningful scenic illustration is appropriate, omit the imagePrompt field entirely. Do not invent unrelated scenes just to fill the field.`;
+
 const ASSERTION_REASON_QUALITY_RULES = `
 QUALITY RULES FOR ASSERTION-REASON SECTION:
 - COVER THE FULL BREADTH of the chapter. Identify the chapter's distinct sub-topics, then distribute items so that no single sub-topic gets more than ~30% of the items (e.g. with 10 items, no sub-topic exceeds 3 items).
@@ -82,7 +96,10 @@ ${ASSERTION_REASON_QUALITY_RULES}
 
 SECTION C - Case Study (${cfg.caseStudy} case studies)
 Each case study has a SUBSTANTIAL real-world stimulus of 150-200 words (8-12 lines), drawing from sports, finance, design, structures, daily life — followed by 4 MCQ sub-questions (4 options each). The stimulus must establish a concrete scenario with multiple named quantities, parties, or constraints so the sub-questions have ample material to interrogate.
+
+Each case study should ALSO include an "imagePrompt" field — a scenic illustration prompt that complements the stimulus.
 ${CASE_STUDY_QUALITY_RULES}
+${IMAGE_PROMPT_RULES}
 
 GLOBAL RULES:
 - Every question must be directly derived from the chapter content in the provided textbook pages.
@@ -109,6 +126,7 @@ JSON SCHEMA:
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word real-world scenario, 8-12 lines>",
+        "imagePrompt": "<1-2 sentence scenic illustration prompt, NO text/labels/diagrams, OR omit field>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
@@ -141,7 +159,11 @@ ${ASSERTION_REASON_QUALITY_RULES}
 
 SECTION C - Case Study (${cfg.caseStudy} case studies)
 Each case study has a SUBSTANTIAL scientific stimulus of 150-200 words (8-12 lines) — an experimental setup, real-world phenomenon, observation table, or principle in action — followed by 4 MCQ sub-questions (4 options each). Include data, numbers, specific observations, and named entities so the sub-questions have rich material to probe.
+
+Each case study should ALSO include an "imagePrompt" field — a scenic illustration prompt that complements the stimulus.
 ${CASE_STUDY_QUALITY_RULES}
+${IMAGE_PROMPT_RULES}
+- Science-specific: if the case study is fundamentally about a circuit, ray-diagram, anatomical labeling, or chemical apparatus, OMIT the imagePrompt field (those need diagrams which AI image generation cannot produce reliably). Use imagePrompt only when there's a meaningful real-world scene to illustrate (e.g. a power plant landscape, a forest ecosystem, an everyday scene with the phenomenon visible).
 
 GLOBAL RULES:
 - Every question directly derived from the chapter content in the provided textbook pages.
@@ -168,6 +190,7 @@ JSON SCHEMA:
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word scientific scenario, 8-12 lines>",
+        "imagePrompt": "<scenic illustration prompt, OR omit when content is diagrammatic>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
@@ -200,8 +223,12 @@ ${ASSERTION_REASON_QUALITY_RULES}
 
 SECTION C - Source-Based Questions (${cfg.caseStudy} source extracts)
 Each item has a 150-200 word source extract (8-12 lines): a quoted speech, treaty excerpt, news report, data passage, or NCERT-style historical narrative — period-authentic and rich enough to support multi-step interpretation. Followed by 4 sub-questions (3 MCQ + 1 short answer OR 4 MCQs).
+
+Each item should ALSO include an "imagePrompt" field — a scenic illustration prompt that complements the extract.
 ${CASE_STUDY_QUALITY_RULES}
 - The source extract must read like an actual primary text - quote a named speaker, dated document, or specific data source where appropriate.
+${IMAGE_PROMPT_RULES}
+- Social-Science specific: do NOT prompt for portraits of named historical figures (likeness fails) and do NOT prompt for maps with country/state borders. Use crowd scenes, period everyday-life scenes, or generic landscapes only.
 
 GLOBAL RULES:
 - Every question directly derived from the chapter content in the provided textbook pages.
@@ -227,6 +254,7 @@ JSON SCHEMA:
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word source extract, 8-12 lines, primary-text style>",
+        "imagePrompt": "<scenic crowd/period-everyday-life prompt, NO named figures or maps, OR omit>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}

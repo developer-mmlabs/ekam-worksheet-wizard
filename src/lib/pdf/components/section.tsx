@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet } from "@react-pdf/renderer";
+import { View, Text, Image, StyleSheet } from "@react-pdf/renderer";
 import { QuestionSection, Question, CaseStudy, TemplateTheme } from "@/types";
 
 interface SectionProps {
@@ -42,10 +42,20 @@ export function QuestionSectionBlock({ section, theme }: SectionProps) {
 }
 
 function CaseStudyBlock({ caseStudy, styles }: { caseStudy: CaseStudy; styles: Styles }) {
+  const hasImage = Boolean(caseStudy.imageUrl);
   return (
     <View style={styles.caseStudyBlock} wrap={false}>
       <Text style={styles.caseStudyLabel}>Case Study {caseStudy.number}</Text>
-      <Text style={styles.caseStudyStimulus}>{caseStudy.stimulus}</Text>
+      {hasImage ? (
+        <View style={styles.caseStudyImageRow}>
+          <View style={styles.caseStudyTextCol}>
+            <Text style={styles.caseStudyStimulus}>{caseStudy.stimulus}</Text>
+          </View>
+          <Image src={caseStudy.imageUrl!} style={styles.caseStudyImage} />
+        </View>
+      ) : (
+        <Text style={styles.caseStudyStimulus}>{caseStudy.stimulus}</Text>
+      )}
       {caseStudy.questions.map((q) => (
         <QuestionBlock
           key={q.number}
@@ -219,6 +229,21 @@ function createStyles(theme: TemplateTheme) {
       lineHeight: 1.35,
       fontFamily: "Helvetica",
       paddingBottom: 3,
+    },
+    caseStudyImageRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 8,
+      paddingBottom: 3,
+    },
+    caseStudyTextCol: {
+      flex: 1,
+    },
+    caseStudyImage: {
+      width: 110,
+      height: 110,
+      objectFit: "cover",
+      borderRadius: 3,
     },
     optionsGrid: {
       flexDirection: "row",

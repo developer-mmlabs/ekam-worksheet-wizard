@@ -26,8 +26,10 @@ export function registerPdfFonts() {
   Font.register({
     family: PDF_FONT,
     fonts: [
-      { src: join(fontsDir, "DejaVuSans.ttf"), fontWeight: "normal" },
-      { src: join(fontsDir, "DejaVuSans-Bold.ttf"), fontWeight: "bold" },
+      { src: join(fontsDir, "DejaVuSans.ttf"), fontWeight: "normal", fontStyle: "normal" },
+      { src: join(fontsDir, "DejaVuSans-Bold.ttf"), fontWeight: "bold", fontStyle: "normal" },
+      { src: join(fontsDir, "DejaVuSans-Oblique.ttf"), fontWeight: "normal", fontStyle: "italic" },
+      { src: join(fontsDir, "DejaVuSans-BoldOblique.ttf"), fontWeight: "bold", fontStyle: "italic" },
     ],
   });
 }

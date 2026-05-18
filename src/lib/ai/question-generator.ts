@@ -38,6 +38,13 @@ QUALITY RULES FOR THE STIMULUS-AND-SUBQUESTIONS BLOCK:
 - Sub-questions must escalate in difficulty: first 1-2 are direct lookups from the stimulus, last 1-2 require multi-step reasoning or computation that the stimulus supports.
 - All four MCQ options must be plausible. Mix the correct option position across sub-questions (don't always make it option (a)).
 
+ORIGINALITY — case studies MUST be freshly composed, not lifted from NCERT (CRITICAL):
+- The NCERT textbook pages are provided so you understand WHAT concepts the chapter covers. They are NOT a question bank to copy from.
+- DO NOT reproduce NCERT example problems, solved examples, or exercise problems verbatim or near-verbatim. Examples to avoid: the juice-seller glass problem (Ch. Surface Areas and Volumes), the kite-flying problem (Ch. Some Applications of Trigonometry), the tower-shadow problem, the conical-tent problem — these are well-known NCERT exercises and students will have already seen them.
+- Compose ORIGINAL real-world scenarios — same chapter concepts, different setting, different numbers, different framing. Draw on fresh contexts: Pradhan Mantri schemes, sports stadium / arena design, water tank or storage tank engineering, road / bridge construction, agricultural land partitioning, packaging / shipping containers, drone / sensor placement, contemporary daily-life Indian scenarios.
+- NEVER reference NCERT figure numbers ("Fig 12.13", "Fig 13.21", "as shown in Fig X.Y", "Example 8", "Q. 14") in the stimulus. Those references only make sense inside the textbook; they have no meaning in a standalone worksheet. If the scenario needs a figure, EMIT one (Trigger A → imageSvg) and write "as shown in the figure below" — never "as shown in Fig X.Y".
+- Sanity check before submitting: search your stimulus for the literal substring "Fig " — if found, rewrite or emit imageSvg.
+
 DIVERSITY ACROSS MULTIPLE CASE STUDIES (CRITICAL):
 - Each case study MUST test a DIFFERENT mathematical/scientific concept, theorem, or sub-topic from the chapter — not the same idea wrapped in different real-world scenarios.
 - Before drafting: list the chapter's distinct sub-topics. Assign each case study to a DIFFERENT one.
@@ -63,7 +70,18 @@ EMIT an image ONLY when ONE of these triggers fires:
 
 TRIGGER A → use "imageSvg" (Track D, math-exact SVG diagram):
 The sub-questions reference specific MEASURABLE quantities — exact angles, exact ratios, exact coordinates, labelled vertices / sides, a geometric figure with marked dimensions. SVG is math-exact: a 72° sector drawn in SVG is literally 72°. AI image generation CANNOT honor measurable geometry.
-Fires for: sector of a circle with a given central angle; triangle with labelled sides / angles; coordinate plane with marked points; chord-and-perpendicular in a circle; cylinder / cone / hemisphere composite with given dimensions; ray diagram (lens, mirror, prism); free-body diagram with labelled forces; electrical circuit topology.
+Fires for ANY of these (this list is exhaustive for Class 10 Maths case studies — if the case study fits, you MUST emit imageSvg):
+- Sector of a circle with a given central angle (Pattern B).
+- Circle with chord and perpendicular from centre (Pattern A).
+- Tangent from external point to a circle (Pattern C).
+- Coordinate plane with marked points or distances (Pattern D).
+- Triangle with labelled vertices, sides, or angle markers (Pattern E).
+- Individual 3D solid with given dimensions — cylinder, cone, sphere, hemisphere (Pattern F).
+- Composite 3D solid (cylinder + hemispherical caps; cone surmounted by hemisphere; cylinder with hemispherical base; cylinder with hemispheres scooped from ends; cone + frustum; cone + cylinder + hemisphere) — Pattern G.1 / G.2 / G.3 cover the common shapes.
+- Quadratic / parabola with marked vertex and zeros.
+- Rectangle or quadrilateral with labelled dimensions.
+- Ray diagram (lens, mirror, prism); free-body / force diagram; electrical circuit topology.
+Rule of thumb: if the stimulus gives you a height, a radius, a chord, an angle, a side, a coordinate, or two of these and asks the student to compute surface area / volume / length / position from them — Trigger A fires. Omitting the image here is a defect, not a safe default.
 
 imageSvg is a JSON object: {
   "viewBox": "0 0 200 200",

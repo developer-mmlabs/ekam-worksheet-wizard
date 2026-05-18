@@ -39,19 +39,32 @@ QUALITY RULES FOR THE STIMULUS-AND-SUBQUESTIONS BLOCK:
 - All four MCQ options must be plausible. Mix the correct option position across sub-questions (don't always make it option (a)).
 - When generating MULTIPLE case studies, each one must use a DIFFERENT real-world context (e.g. don't make every case study about athletes - one could be finance, another design, another daily-life logistics, another sports). Different chapter sub-topics where applicable.`;
 
-const IMAGE_PROMPT_RULES = `
-IMAGE PROMPT RULES (for the "imagePrompt" field on each case study):
-- Describe a SCENIC illustration of the real-world setting from the stimulus (people, objects, places, activities). 1-2 sentences.
-- The image must be illustrative/decorative ONLY - it must NEVER be a diagram, chart, graph, map, schematic, equation, or anything that requires labels, numbers, or technical accuracy.
-- Do NOT mention text, numbers, formulas, captions, or labels in the prompt. The image must contain no readable text.
-- Do NOT name real public figures or branded products.
-- Indian context preferred (Indian people, Indian settings, Indian everyday life) when the chapter content is culturally neutral.
-- Good: "A young student flying a colorful diamond kite in an open park on a sunny afternoon, kite string stretched against the blue sky"
-- Good: "Three farmers harvesting wheat in a golden field at sunset, with bullock carts in the background"
-- Bad: "A circuit diagram with resistor labeled R1 and battery"  (this is a diagram, not a scenic illustration)
-- Bad: "A graph showing the relationship between x and y axes"  (this is a chart)
-- Bad: "A photo of Jawaharlal Nehru"  (named public figure)
-If the case study's content is fundamentally diagrammatic (e.g. circuit analysis, ray optics) and no meaningful scenic illustration is appropriate, omit the imagePrompt field entirely. Do not invent unrelated scenes just to fill the field.`;
+const IMAGE_RULES = `
+IMAGE RULES — for each case study, decide whether to include an image and which path to use. Modern image-generation models (Gemini 2.5/3 Image, GPT Image 2) reliably handle illustrative diagrams with simple labels, layouts, and real-world scenes — use AI generously where it fits.
+
+OPTION 1 — Emit "imagePrompt" (Track A, AI image generation):
+Use when the image is a SCENE, ILLUSTRATIVE DIAGRAM, LAYOUT, or simple chart that current AI image models can produce well. Examples:
+- Real-world scenes: "A young Indian student flying a colourful diamond kite in an open park..."
+- Concept illustrations with simple labels: "A parabolic satellite dish receiving incoming signals concentrated at a focal point, labels: FOCUS, AXIS OF SYMMETRY, PARABOLA, INCOMING SIGNALS"
+- Layout/design diagrams: "Aerial view of a rectangular garden divided into two flower beds with a walking path along one side, dimensions labelled: Total Length 10 m, Total Width 6 m, Flower Bed A, Flower Bed B, Walking Path"
+- Simple data visualisations: "A flat infographic showing a 100-question quiz split: x questions learned correctly (green ticks) and 100-x questions guessed wrong (red crosses)"
+- Style: flat illustrative, soft colours, white background, minimal short labels (1-5 words each).
+- Prompt format: 1-3 sentences describing the scene/diagram. List key labels in plain language; trust the renderer to place them sensibly.
+
+OPTION 2 — Emit "imageNcertHint" (Track B, NCERT extraction — currently a no-op; placeholder for future):
+Use when the image is something current AI image generation still CANNOT do reliably:
+- Outline maps with country/state borders (India political map, world map)
+- Recognisable likeness of specific named historical figures (Gandhi, Nehru, Bose, Lala Lajpat Rai, etc.)
+- Exact NCERT-original political cartoons or paintings
+- Anatomically precise labelled diagrams (heart with all chambers/valves, eye with retina/cornea, alimentary canal) where pedagogical accuracy matters
+- Electrical circuit topology where component connectivity must be correct
+imageNcertHint format: a short phrase describing what should be found/cropped from NCERT material, e.g. "Political outline map of India with state borders", "Portrait of Mahatma Gandhi", "Diagram of the human eye with retina and cornea labelled".
+
+CHOICE RULES:
+- Pick AT MOST ONE of the two fields per case study. Never both.
+- OMIT BOTH fields when no image adds pedagogical value (abstract math problems, text-only source extracts where the extract itself IS the content).
+- Do not invent images just to fill the field — pedagogical value first.
+- Do not name real public figures or branded products in Option 1 prompts. If a public figure is essential, use Option 2.`;
 
 const ASSERTION_REASON_QUALITY_RULES = `
 QUALITY RULES FOR ASSERTION-REASON SECTION:
@@ -97,9 +110,9 @@ ${ASSERTION_REASON_QUALITY_RULES}
 SECTION C - Case Study (${cfg.caseStudy} case studies)
 Each case study has a SUBSTANTIAL real-world stimulus of 150-200 words (8-12 lines), drawing from sports, finance, design, structures, daily life — followed by 4 MCQ sub-questions (4 options each). The stimulus must establish a concrete scenario with multiple named quantities, parties, or constraints so the sub-questions have ample material to interrogate.
 
-Each case study should ALSO include an "imagePrompt" field — a scenic illustration prompt that complements the stimulus.
+Each case study MAY include an image — decide per case study using IMAGE RULES below. Pick at most one of "imagePrompt" or "imageNcertHint", or omit both when no image adds pedagogical value.
 ${CASE_STUDY_QUALITY_RULES}
-${IMAGE_PROMPT_RULES}
+${IMAGE_RULES}
 
 GLOBAL RULES:
 - Every question must be directly derived from the chapter content in the provided textbook pages.
@@ -126,7 +139,8 @@ JSON SCHEMA:
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word real-world scenario, 8-12 lines>",
-        "imagePrompt": "<1-2 sentence scenic illustration prompt, NO text/labels/diagrams, OR omit field>",
+        "imagePrompt": "<EITHER an AI image prompt (Track A) OR omit and use imageNcertHint instead, OR omit both>",
+        "imageNcertHint": "<EITHER a Track B hint for NCERT extraction (e.g. 'India political map') OR omit>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
@@ -160,10 +174,12 @@ ${ASSERTION_REASON_QUALITY_RULES}
 SECTION C - Case Study (${cfg.caseStudy} case studies)
 Each case study has a SUBSTANTIAL scientific stimulus of 150-200 words (8-12 lines) — an experimental setup, real-world phenomenon, observation table, or principle in action — followed by 4 MCQ sub-questions (4 options each). Include data, numbers, specific observations, and named entities so the sub-questions have rich material to probe.
 
-Each case study should ALSO include an "imagePrompt" field — a scenic illustration prompt that complements the stimulus.
+Each case study MAY include an image — decide per case study using IMAGE RULES below. Pick at most one of "imagePrompt" or "imageNcertHint", or omit both when no image adds pedagogical value.
 ${CASE_STUDY_QUALITY_RULES}
-${IMAGE_PROMPT_RULES}
-- Science-specific: if the case study is fundamentally about a circuit, ray-diagram, anatomical labeling, or chemical apparatus, OMIT the imagePrompt field (those need diagrams which AI image generation cannot produce reliably). Use imagePrompt only when there's a meaningful real-world scene to illustrate (e.g. a power plant landscape, a forest ecosystem, an everyday scene with the phenomenon visible).
+${IMAGE_RULES}
+Science-specific guidance:
+- For real-world phenomena (power plants, ecosystems, household appliances, lab observations from a distance): Option 1 imagePrompt works well.
+- For precise circuit diagrams, ray diagrams, anatomically accurate labelled specimens: prefer Option 2 imageNcertHint — Track B is more reliable for these.
 
 GLOBAL RULES:
 - Every question directly derived from the chapter content in the provided textbook pages.
@@ -190,7 +206,8 @@ JSON SCHEMA:
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word scientific scenario, 8-12 lines>",
-        "imagePrompt": "<scenic illustration prompt, OR omit when content is diagrammatic>",
+        "imagePrompt": "<Option 1 AI prompt OR omit>",
+        "imageNcertHint": "<Option 2 NCERT hint OR omit>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
@@ -224,11 +241,13 @@ ${ASSERTION_REASON_QUALITY_RULES}
 SECTION C - Source-Based Questions (${cfg.caseStudy} source extracts)
 Each item has a 150-200 word source extract (8-12 lines): a quoted speech, treaty excerpt, news report, data passage, or NCERT-style historical narrative — period-authentic and rich enough to support multi-step interpretation. Followed by 4 sub-questions (3 MCQ + 1 short answer OR 4 MCQs).
 
-Each item should ALSO include an "imagePrompt" field — a scenic illustration prompt that complements the extract.
+Each item MAY include an image — decide using IMAGE RULES below. Source-based questions in CBSE board papers are usually text-only; emit an image only when it adds real pedagogical value.
 ${CASE_STUDY_QUALITY_RULES}
 - The source extract must read like an actual primary text - quote a named speaker, dated document, or specific data source where appropriate.
-${IMAGE_PROMPT_RULES}
-- Social-Science specific: do NOT prompt for portraits of named historical figures (likeness fails) and do NOT prompt for maps with country/state borders. Use crowd scenes, period everyday-life scenes, or generic landscapes only.
+${IMAGE_RULES}
+Social-Science specific guidance:
+- For period crowd scenes, everyday-life of an era, generic landscapes: Option 1 imagePrompt works.
+- For political maps with state/country borders, recognisable historical figures by name, and NCERT-original political cartoons: use Option 2 imageNcertHint — AI cannot do these reliably.
 
 GLOBAL RULES:
 - Every question directly derived from the chapter content in the provided textbook pages.
@@ -254,7 +273,8 @@ JSON SCHEMA:
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word source extract, 8-12 lines, primary-text style>",
-        "imagePrompt": "<scenic crowd/period-everyday-life prompt, NO named figures or maps, OR omit>",
+        "imagePrompt": "<Option 1 AI prompt OR omit>",
+        "imageNcertHint": "<Option 2 NCERT hint (e.g. 'India political map', 'Portrait of Gandhi') OR omit>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}

@@ -101,16 +101,29 @@ export const processWorksheet = inngest.createFunction(
       );
     });
 
-    // Step 3.5: Generate case-study images in parallel (if any imagePrompts emitted)
+    // Step 3.5: Generate case-study images in parallel.
+    // Two paths the LLM can choose per case study:
+    //   - imagePrompt -> Track A (AI image gen, implemented here)
+    //   - imageNcertHint -> Track B (NCERT extraction, not yet implemented; logged + skipped)
     if (await isImageGenAvailable()) {
       const imageJobs: { sectionIdx: number; csIdx: number; prompt: string }[] = [];
+      const ncertSkips: { sectionIdx: number; csIdx: number; hint: string }[] = [];
       questions.sections.forEach((section, sIdx) => {
         section.caseStudies?.forEach((cs, csIdx) => {
           if (cs.imagePrompt && cs.imagePrompt.trim().length > 0) {
             imageJobs.push({ sectionIdx: sIdx, csIdx, prompt: cs.imagePrompt });
+          } else if (cs.imageNcertHint && cs.imageNcertHint.trim().length > 0) {
+            ncertSkips.push({ sectionIdx: sIdx, csIdx, hint: cs.imageNcertHint });
           }
         });
       });
+
+      if (ncertSkips.length > 0) {
+        console.log(
+          `[worksheet-gen] ${ncertSkips.length} case study(ies) marked for NCERT extraction (Track B, not yet implemented). Skipping:`,
+          ncertSkips.map((s) => s.hint),
+        );
+      }
 
       if (imageJobs.length > 0) {
         const imageResults = await Promise.all(

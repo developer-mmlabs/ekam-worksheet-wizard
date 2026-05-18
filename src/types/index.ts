@@ -102,8 +102,9 @@ export interface CaseStudy {
   number: number;
   stimulus: string;
   questions: Question[];
-  imagePrompt?: string; // LLM-emitted scenic illustration prompt (no diagrams/labels)
-  imageUrl?: string; // Populated after image gen + upload; consumed by PDF renderer
+  imagePrompt?: string; // Track A: AI-generation prompt
+  imageNcertHint?: string; // Track B: hint for cropping the right NCERT figure (not yet implemented; skipped at runtime)
+  imageUrl?: string; // Populated after Track A gen + upload, or Track B crop. Consumed by PDF renderer.
 }
 
 export interface Question {

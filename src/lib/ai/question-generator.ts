@@ -47,64 +47,64 @@ DIVERSITY ACROSS MULTIPLE CASE STUDIES (CRITICAL):
 - Verify before submitting: read across the case studies' first sub-question. If any two ask the same thing structurally, you have a duplication problem — rewrite.`;
 
 const IMAGE_RULES = `
-IMAGE RULES — for each case study, choose AT MOST ONE of three paths (or omit all). The right path depends on what the diagram must show.
+IMAGE RULES — start from "no image". Most case studies should be text-only.
 
-OPTION 1 — Emit "imageSvg" (Track D, math-exact SVG diagram):
-USE THIS for any case study where the diagram must show specific MEASURABLE quantities — exact angles, exact ratios, exact coordinates, exact proportions. SVG is math-exact: a 72° sector drawn in SVG is literally 72°. AI image generation cannot honor measurable geometry.
-Use Track D for:
-- Sectors of circles with specific central angles (e.g. 72°, 120°, 45°)
-- Triangles with labelled vertices, side lengths, or angle markers
-- Coordinate planes (XY axes, tick marks, labelled points like (-3, 0))
-- Parabolas / quadratic curves with marked vertex and zeros
-- Rectangles / quadrilaterals with labelled dimensions
-- Circles with chords, tangents, inscribed/circumscribed shapes
-- Line segments and angle marks in geometry proofs
-- Simple block/force/optics diagrams
+DEFAULT: emit NO image field. Most CBSE case studies are pure text + sub-questions. An image adds value ONLY when (a) a diagram is genuinely required to answer at least one sub-question, OR (b) a labelled object/setup is the central pedagogical anchor of the scenario.
+
+DO NOT emit an image when the case study is any of these (always text-only):
+- A pure word / algebra problem: income & expenditure, ages, time-and-work, time-distance with no geometry, ratio / proportion arithmetic, percent profit-loss, simple-or-compound interest.
+- A probability scenario with familiar objects (cards, dice, coins, balls in a bag) — readers know what these look like; drawing them adds nothing.
+- A statistics problem where the data table is already in the stimulus text.
+- A source extract, quoted passage, poem, dialogue, news report, treaty excerpt, or period text — these are ALWAYS text-only in CBSE board papers.
+- Any case where a reader could solve every sub-question from the text alone without needing to see anything.
+If in doubt → omit the image. The cost of a missing image is low; the cost of a wrong / unnecessary image is high.
+
+EMIT an image ONLY when ONE of these triggers fires:
+
+TRIGGER A → use "imageSvg" (Track D, math-exact SVG diagram):
+The sub-questions reference specific MEASURABLE quantities — exact angles, exact ratios, exact coordinates, labelled vertices / sides, a geometric figure with marked dimensions. SVG is math-exact: a 72° sector drawn in SVG is literally 72°. AI image generation CANNOT honor measurable geometry.
+Fires for: sector of a circle with a given central angle; triangle with labelled sides / angles; coordinate plane with marked points; chord-and-perpendicular in a circle; cylinder / cone / hemisphere composite with given dimensions; ray diagram (lens, mirror, prism); free-body diagram with labelled forces; electrical circuit topology.
 
 imageSvg is a JSON object: {
-  "viewBox": "0 0 200 200",         // square coordinate space recommended
-  "shapes": [                        // array of primitives, drawn in order
-    // Available shape types:
+  "viewBox": "0 0 200 200",
+  "shapes": [
     { "type": "circle", "cx": 100, "cy": 100, "r": 80, "stroke": "#2563eb", "strokeWidth": 1.5 },
     { "type": "rect",   "x": 20, "y": 40, "width": 60, "height": 40, "fill": "#fde68a", "stroke": "#92400e" },
     { "type": "line",   "x1": 0, "y1": 100, "x2": 200, "y2": 100, "stroke": "#1f2937", "strokeWidth": 1, "strokeDasharray": "3 2" },
-    { "type": "path",   "d": "M 100 100 L 100 20 A 80 80 0 0 1 175 130 Z", "fill": "#fbbf24", "stroke": "#92400e" },  // for sectors, parabolas, arcs
-    { "type": "polygon", "points": "100,20 175,150 25,150", "fill": "none", "stroke": "#2563eb" },                    // triangles
-    { "type": "text",   "x": 100, "y": 60, "text": "72°", "fontSize": 10, "textAnchor": "middle" }                   // labels
+    { "type": "path",   "d": "M 100 100 L 100 20 A 80 80 0 0 1 175 130 Z", "fill": "#fbbf24", "stroke": "#92400e" },
+    { "type": "polygon", "points": "100,20 175,150 25,150", "fill": "none", "stroke": "#2563eb" },
+    { "type": "text",   "x": 100, "y": 60, "text": "72°", "fontSize": 10, "textAnchor": "middle" }
   ]
 }
 SVG arc path for a sector with central angle θ (degrees) at center (cx, cy) with radius r, starting from angle 0:
   d = "M cx cy L (cx + r) cy A r r 0 [largeArc] 1 (cx + r·cos(θ)) (cy + r·sin(θ)) Z"
   where largeArc = 1 if θ > 180 else 0.
 
-SVG DIVERSITY (when multiple case studies exist):
-- If two case studies have similar underlying geometry (e.g. both involve a circle and a tangent), the SVG diagrams must STILL look meaningfully different. Vary the radius proportions, line orientation, viewBox composition, OR add scenario-specific decorative elements that hint at the context (e.g. spokes inside the wheel for a bicycle; coil or vertical line for a pulley rope; wavy lines inside the circle for a well's water surface; petals around the circle for a flower bed).
-- Identical-looking SVGs across case studies signal that the case studies themselves are duplicated and should be re-conceived (see DIVERSITY rules above).
+SVG DIVERSITY (when multiple case studies use Track D):
+- If two case studies have similar underlying geometry (both circle-and-tangent, for example), the SVG diagrams must STILL look meaningfully different. Vary radius proportions, line orientation, viewBox composition, OR add scenario-specific decorative elements (spokes for a bicycle wheel, vertical rope-line for a pulley, wavy water lines for a well, petals around a flower bed).
+- Identical-looking SVGs across case studies signal that the case studies themselves are duplicated — re-conceive the case studies.
 
-OPTION 2 — Emit "imagePrompt" (Track A, AI image generation):
-USE THIS for real-world scenes, decorative illustrations, and concept art where exactness doesn't matter. The image is visual flavor, not measurement.
-- Real-world scenes: "A young Indian student flying a colourful diamond kite in an open park..."
-- Decorative concept illustrations: "A parabolic satellite dish receiving incoming signals concentrated at a focal point..."  (note: if the case study actually computes the parabola's equation, use Track D imageSvg instead)
-- Style: flat illustrative, soft colours, white background.
-- Prompt format: 1-3 sentences describing the scene. The image will NOT honor specific angles or ratios — only stylistic mood. If the case study text mentions specific quantities, prefer Track D.
+TRIGGER B → use "imagePrompt" (Track A, AI image generation):
+A tangible real-world OBJECT or SCENE is the central anchor of the scenario AND no specific measurements need to be visually accurate. The image is visual flavor / context, not measurement.
+Fires for: a kite scene (chapter "Heights and Distances" — the angle in the drawing doesn't have to match the question's number); a satellite dish for "Parabolas" intro; a power plant or wind farm; a period crowd scene for History.
+If the case study mentions specific angles, lengths, ratios, or coordinates that need to be VISUALLY ACCURATE → DO NOT use Track A. Use Track D.
+Prompt format: 1-3 sentences describing the scene. Style is locked server-side (flat illustrative, soft colours, white background) — do not redescribe style.
 
-OPTION 3 — Emit "imageNcertHint" (Track B, NCERT extraction — currently a no-op; placeholder for future):
-USE THIS for things AI image generation CANNOT do AND SVG cannot do:
-- Outline maps with country/state borders (India political map, world map)
-- Recognisable likeness of specific named historical figures (Gandhi, Nehru, etc.)
-- Exact NCERT-original political cartoons or paintings
-- Anatomically precise labelled biological diagrams (heart chambers/valves, eye retina/cornea/lens) where scientific accuracy matters
-- Electrical circuit topology where component connectivity must be electrically correct
-imageNcertHint format: a short phrase describing what should be cropped, e.g. "Political outline map of India with state borders".
+TRIGGER C → use "imageNcertHint" (Track B, NCERT extraction — currently a no-op placeholder):
+The diagram is something neither AI image gen nor SVG can produce: outline maps with country / state borders, recognisable likeness of named historical figures, NCERT-original political cartoons, anatomically precise labelled biological diagrams (heart chambers, eye anatomy), electrical circuit topology where component connectivity must be electrically correct.
+Format: a short crop phrase, e.g. "Political outline map of India with state borders".
 
 CHOICE RULES:
 - Pick AT MOST ONE of the three fields per case study. Never multiple.
-- OMIT all three when no image adds pedagogical value (abstract math problems, text-only source extracts).
-- If a case study mentions specific angles, lengths, ratios, or coordinates that need to be VISUALLY ACCURATE, you MUST prefer Track D imageSvg over Track A imagePrompt. Track A cannot honor exact geometry.
+- When no trigger fires → OMIT all three fields entirely. Do not emit empty objects, empty strings, or placeholder text — the field must not appear in the JSON at all.
+- Across multiple case studies in the same worksheet, it is NORMAL AND EXPECTED for some (often most) to have no image. Do not feel obligated to image every case study.
+- If specific measurable geometry is at stake, prefer Track D over Track A.
 - Do not name real public figures in Track A prompts. If a public figure is essential, use Track B.`;
 
 const SVG_MATH_PATTERNS = `
-SVG MATH DIAGRAMS — compute first, then draw.
+SVG MATH DIAGRAMS — read this section ONLY IF Trigger A in IMAGE RULES applied to the current case study. If no measurable geometry is at stake for this case study, SKIP this entire section and emit no imageSvg.
+
+When Track D does apply: compute first, then draw.
 
 CRITICAL: Do NOT eyeball proportions. BEFORE emitting the SVG:
 1. Read the numeric quantities from the stimulus (radius, chord, angle, side lengths, etc.).
@@ -323,7 +323,7 @@ ${ASSERTION_REASON_QUALITY_RULES}
 SECTION C - Case Study (${cfg.caseStudy} case studies)
 Each case study has a SUBSTANTIAL real-world stimulus of 150-200 words (8-12 lines), drawing from sports, finance, design, structures, daily life — followed by 4 MCQ sub-questions (4 options each). The stimulus must establish a concrete scenario with multiple named quantities, parties, or constraints so the sub-questions have ample material to interrogate.
 
-Each case study MAY include an image — decide per case study using IMAGE RULES below.
+Each case study DEFAULTS to text-only. Include an image ONLY if a trigger in IMAGE RULES fires. Pure algebraic word problems (income & expenditure, ages, time-and-work, ratio / proportion, percent, simple / compound interest) and probability scenarios using cards / dice / coins MUST remain text-only — do not draw familiar objects "for decoration".
 ${CASE_STUDY_QUALITY_RULES}
 ${IMAGE_RULES}
 ${SVG_MATH_PATTERNS}
@@ -353,13 +353,11 @@ JSON SCHEMA:
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word real-world scenario, 8-12 lines>",
-        "imageSvg": { "viewBox": "0 0 200 200", "shapes": [ /* Track D shapes, OR omit this field */ ] },
-        "imagePrompt": "<Track A AI prompt, OR omit>",
-        "imageNcertHint": "<Track B NCERT hint (e.g. 'India political map'), OR omit>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
         ]}]
+        /* Optional image field "imageSvg" / "imagePrompt" / "imageNcertHint" — see IMAGE RULES. DEFAULT is to omit all three. */
       }] }
   ]
 }`;
@@ -389,12 +387,13 @@ ${ASSERTION_REASON_QUALITY_RULES}
 SECTION C - Case Study (${cfg.caseStudy} case studies)
 Each case study has a SUBSTANTIAL scientific stimulus of 150-200 words (8-12 lines) — an experimental setup, real-world phenomenon, observation table, or principle in action — followed by 4 MCQ sub-questions (4 options each). Include data, numbers, specific observations, and named entities so the sub-questions have rich material to probe.
 
-Each case study MAY include an image — decide per case study using IMAGE RULES below. Pick at most one of "imagePrompt" or "imageNcertHint", or omit both when no image adds pedagogical value.
+Each case study DEFAULTS to text-only. Include an image ONLY if a trigger in IMAGE RULES fires — e.g., a ray diagram, circuit, anatomy figure, or real-world setup that is the central anchor of the scenario. Observation-table stimuli, chemistry word problems, and reasoning-only items (where the data is already in the text) MUST remain text-only.
 ${CASE_STUDY_QUALITY_RULES}
 ${IMAGE_RULES}
-Science-specific guidance:
-- For real-world phenomena (power plants, ecosystems, household appliances, lab observations from a distance): Option 1 imagePrompt works well.
-- For precise circuit diagrams, ray diagrams, anatomically accurate labelled specimens: prefer Option 2 imageNcertHint — Track B is more reliable for these.
+Science-specific guidance (when an image IS warranted):
+- For real-world phenomena that anchor the scenario (power plants, ecosystems, household appliances, lab observations from a distance): Trigger B → imagePrompt works well.
+- For precise circuit diagrams, ray diagrams, anatomically accurate labelled specimens: Trigger C → imageNcertHint — Track B (NCERT) is more reliable for these than AI image gen.
+- Track D (imageSvg) suits simple ray-paths, lens / mirror setups, free-body diagrams, and any case where specific angles or distances are interrogated.
 
 GLOBAL RULES:
 - Every question directly derived from the chapter content in the provided textbook pages.
@@ -421,13 +420,11 @@ JSON SCHEMA:
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word scientific scenario, 8-12 lines>",
-        "imageSvg": { "viewBox": "0 0 200 200", "shapes": [ /* Track D shapes, OR omit this field */ ] },
-        "imagePrompt": "<Track A AI prompt OR omit>",
-        "imageNcertHint": "<Track B NCERT hint OR omit>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
         ]}]
+        /* Optional image field "imageSvg" / "imagePrompt" / "imageNcertHint" — see IMAGE RULES. DEFAULT is to omit all three. */
       }] }
   ]
 }`;
@@ -457,13 +454,14 @@ ${ASSERTION_REASON_QUALITY_RULES}
 SECTION C - Source-Based Questions (${cfg.caseStudy} source extracts)
 Each item has a 150-200 word source extract (8-12 lines): a quoted speech, treaty excerpt, news report, data passage, or NCERT-style historical narrative — period-authentic and rich enough to support multi-step interpretation. Followed by 4 sub-questions (3 MCQ + 1 short answer OR 4 MCQs).
 
-Each item MAY include an image — decide using IMAGE RULES below. Source-based questions in CBSE board papers are usually text-only; emit an image only when it adds real pedagogical value.
+Each item DEFAULTS to text-only — and most should stay that way. CBSE source-based questions are almost always text-only. Emit an image ONLY when the item is genuinely map-based (political / physical map of India or a region), visual-source-based (a specific political cartoon or photograph that the sub-questions interrogate), or chart-based (a data chart that the sub-questions read off). Quoted-text extracts, speeches, treaty excerpts, news reports, and narrative passages MUST NOT have an image.
 ${CASE_STUDY_QUALITY_RULES}
 - The source extract must read like an actual primary text - quote a named speaker, dated document, or specific data source where appropriate.
 ${IMAGE_RULES}
-Social-Science specific guidance:
-- For period crowd scenes, everyday-life of an era, generic landscapes: Option 1 imagePrompt works.
-- For political maps with state/country borders, recognisable historical figures by name, and NCERT-original political cartoons: use Option 2 imageNcertHint — AI cannot do these reliably.
+Social-Science specific guidance (when an image IS warranted — usually it isn't):
+- For period crowd scenes, everyday-life of an era, generic landscapes (rarely needed): Trigger B → imagePrompt.
+- For political maps with state / country borders, recognisable historical figures by name, NCERT-original political cartoons: Trigger C → imageNcertHint — AI cannot do these reliably.
+- For chart-based interpretation items (bar chart, pie chart, line graph that the sub-questions read off): Trigger A → imageSvg.
 
 GLOBAL RULES:
 - Every question directly derived from the chapter content in the provided textbook pages.
@@ -489,9 +487,7 @@ JSON SCHEMA:
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word source extract, 8-12 lines, primary-text style>",
-        "imageSvg": { "viewBox": "0 0 200 200", "shapes": [ /* Track D shapes (e.g. data charts), OR omit */ ] },
-        "imagePrompt": "<Track A AI prompt OR omit>",
-        "imageNcertHint": "<Track B NCERT hint (e.g. 'India political map', 'Portrait of Gandhi') OR omit>",
+        /* Optional image field "imageSvg" / "imagePrompt" / "imageNcertHint" — see IMAGE RULES. DEFAULT is to omit all three. Quoted-text extracts MUST NOT have an image. */
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}

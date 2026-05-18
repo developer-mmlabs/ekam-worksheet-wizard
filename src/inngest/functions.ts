@@ -118,7 +118,8 @@ export const processWorksheet = inngest.createFunction(
             step.run(`generate-image-${idx}`, async () => {
               try {
                 const img = await generateImage(job.prompt);
-                const path = `images/${worksheetId}/case-${job.sectionIdx}-${job.csIdx}.png`;
+                const ext = img.mimeType.split("/")[1]?.replace("jpeg", "jpg") || "png";
+                const path = `images/${worksheetId}/case-${job.sectionIdx}-${job.csIdx}.${ext}`;
                 const { error: uploadError } = await supabaseAdmin.storage
                   .from("worksheets")
                   .upload(path, img.buffer, { contentType: img.mimeType, upsert: true });

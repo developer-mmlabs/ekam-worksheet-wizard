@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, Image, StyleSheet } from "@react-pdf/renderer";
 import { School, Grade, Subject, Chapter, TemplateTheme } from "@/types";
+import { PDF_FONT } from "../fonts";
 
 interface HeaderProps {
   school: School;
@@ -109,25 +110,25 @@ function createStyles(theme: TemplateTheme) {
     schoolName: {
       fontSize: 18,
       fontWeight: "bold",
-      fontFamily: "Helvetica-Bold",
+      fontFamily: PDF_FONT,
       textAlign: "center",
     },
     schoolLocation: {
       fontSize: 12,
       fontWeight: "bold",
-      fontFamily: "Helvetica-Bold",
+      fontFamily: PDF_FONT,
       textAlign: "center",
     },
     academicYear: {
       fontSize: 9,
       fontWeight: "bold",
-      fontFamily: "Helvetica-Bold",
+      fontFamily: PDF_FONT,
       textAlign: "center",
     },
     worksheetTitle: {
       fontSize: 12,
       fontWeight: "bold",
-      fontFamily: "Helvetica-Bold",
+      fontFamily: PDF_FONT,
       textAlign: "center",
       color: theme.headerColor,
     },
@@ -155,7 +156,7 @@ function createStyles(theme: TemplateTheme) {
     infoLabel: {
       fontSize: 9,
       fontWeight: "bold",
-      fontFamily: "Helvetica-Bold",
+      fontFamily: PDF_FONT,
       textAlign: "center",
     },
   });

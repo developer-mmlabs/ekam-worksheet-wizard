@@ -1,6 +1,7 @@
 import React from "react";
 import { Svg, Circle, Rect, Line, Path, Polygon, Text as SvgText } from "@react-pdf/renderer";
 import type { SvgDiagram, SvgShape } from "@/types";
+import { PDF_FONT } from "../fonts";
 
 interface SvgDiagramBlockProps {
   diagram: SvgDiagram;
@@ -90,7 +91,7 @@ function renderShape(shape: SvgShape, key: number) {
           y={shape.y}
           textAnchor={shape.textAnchor ?? "start"}
           fill={shape.fill ?? "#1f2937"}
-          style={{ fontSize: shape.fontSize ?? 10, fontFamily: "Helvetica" }}
+          style={{ fontSize: shape.fontSize ?? 10, fontFamily: PDF_FONT }}
         >
           {shape.text}
         </SvgText>

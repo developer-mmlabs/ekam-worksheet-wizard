@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, Image, StyleSheet } from "@react-pdf/renderer";
 import { QuestionSection, Question, CaseStudy, TemplateTheme } from "@/types";
 import { SvgDiagramBlock } from "./svg-diagram";
+import { PDF_FONT } from "../fonts";
 
 interface SectionProps {
   section: QuestionSection;
@@ -174,7 +175,7 @@ function createStyles(theme: TemplateTheme) {
     sectionTitle: {
       fontSize: 11,
       fontWeight: "bold",
-      fontFamily: "Helvetica-Bold",
+      fontFamily: PDF_FONT,
       color: theme.sectionHeaderColor,
     },
     marksLabel: {
@@ -202,7 +203,7 @@ function createStyles(theme: TemplateTheme) {
       width: 18,
       fontSize: 8.5,
       fontWeight: "bold",
-      fontFamily: "Helvetica-Bold",
+      fontFamily: PDF_FONT,
       textAlign: "right",
       paddingRight: 4,
       paddingTop: 1,
@@ -213,10 +214,10 @@ function createStyles(theme: TemplateTheme) {
     questionText: {
       fontSize: 8.5,
       lineHeight: 1.3,
-      fontFamily: "Helvetica",
+      fontFamily: PDF_FONT,
     },
     arLabel: {
-      fontFamily: "Helvetica-Bold",
+      fontFamily: PDF_FONT,
       fontWeight: "bold",
     },
     caseStudyBlock: {
@@ -229,7 +230,7 @@ function createStyles(theme: TemplateTheme) {
     },
     caseStudyLabel: {
       fontSize: 9,
-      fontFamily: "Helvetica-Bold",
+      fontFamily: PDF_FONT,
       fontWeight: "bold",
       color: theme.sectionHeaderColor,
       marginBottom: 2,
@@ -238,7 +239,7 @@ function createStyles(theme: TemplateTheme) {
       fontSize: 8.5,
       fontStyle: "italic",
       lineHeight: 1.35,
-      fontFamily: "Helvetica",
+      fontFamily: PDF_FONT,
       paddingBottom: 3,
     },
     caseStudyImageRow: {
@@ -267,14 +268,14 @@ function createStyles(theme: TemplateTheme) {
       width: "25%",
       fontSize: 8,
       lineHeight: 1.3,
-      fontFamily: "Helvetica",
+      fontFamily: PDF_FONT,
       paddingRight: 4,
     },
     optionWide: {
       width: "50%",
       fontSize: 8,
       lineHeight: 1.3,
-      fontFamily: "Helvetica",
+      fontFamily: PDF_FONT,
       paddingRight: 4,
     },
     matchTable: {
@@ -293,7 +294,7 @@ function createStyles(theme: TemplateTheme) {
     matchColumnHeader: {
       width: "50%",
       fontSize: 7.5,
-      fontFamily: "Helvetica-Bold",
+      fontFamily: PDF_FONT,
       fontWeight: "bold",
       paddingHorizontal: 4,
       paddingVertical: 2,
@@ -307,7 +308,7 @@ function createStyles(theme: TemplateTheme) {
       width: "50%",
       fontSize: 8,
       lineHeight: 1.3,
-      fontFamily: "Helvetica",
+      fontFamily: PDF_FONT,
       paddingHorizontal: 4,
       paddingVertical: 1.5,
     },
@@ -318,7 +319,7 @@ function createStyles(theme: TemplateTheme) {
     subpart: {
       fontSize: 8.5,
       lineHeight: 1.3,
-      fontFamily: "Helvetica",
+      fontFamily: PDF_FONT,
     },
   });
 }

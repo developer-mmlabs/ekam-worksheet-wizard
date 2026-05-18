@@ -1,10 +1,11 @@
 import { GradeBand, TemplateTheme, DecorationLayout } from "@/types";
+import { PDF_FONT } from "../fonts";
 
 // Grade band base styles
 const GRADE_BAND_STYLES: Record<GradeBand, { fontFamily: string; decorativeOpacity: number }> = {
-  primary: { fontFamily: "Helvetica", decorativeOpacity: 0.06 },
-  middle: { fontFamily: "Helvetica", decorativeOpacity: 0.05 },
-  senior: { fontFamily: "Helvetica", decorativeOpacity: 0.04 },
+  primary: { fontFamily: PDF_FONT, decorativeOpacity: 0.06 },
+  middle: { fontFamily: PDF_FONT, decorativeOpacity: 0.05 },
+  senior: { fontFamily: PDF_FONT, decorativeOpacity: 0.04 },
 };
 
 // Grade-band decoration layout — controls density, size, and visual weight

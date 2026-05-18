@@ -37,7 +37,14 @@ QUALITY RULES FOR THE STIMULUS-AND-SUBQUESTIONS BLOCK:
 - The stimulus must include concrete numbers, named entities, and a clear setting that the sub-questions can actually interrogate. Avoid vague generalities.
 - Sub-questions must escalate in difficulty: first 1-2 are direct lookups from the stimulus, last 1-2 require multi-step reasoning or computation that the stimulus supports.
 - All four MCQ options must be plausible. Mix the correct option position across sub-questions (don't always make it option (a)).
-- When generating MULTIPLE case studies, each one must use a DIFFERENT real-world context (e.g. don't make every case study about athletes - one could be finance, another design, another daily-life logistics, another sports). Different chapter sub-topics where applicable.`;
+
+DIVERSITY ACROSS MULTIPLE CASE STUDIES (CRITICAL):
+- Each case study MUST test a DIFFERENT mathematical/scientific concept, theorem, or sub-topic from the chapter — not the same idea wrapped in different real-world scenarios.
+- Before drafting: list the chapter's distinct sub-topics. Assign each case study to a DIFFERENT one.
+- INCORRECT example (chapter "Circles", 4 case studies all about "tangent perpendicular to radius" in different scenarios — bicycle wheel, car wheel, pulley, water well — all asking the same Q3 "angle = 90°"). This is the SAME CONCEPT repeated; that is NOT acceptable diversity.
+- CORRECT example (chapter "Circles", 4 case studies): (1) tangent length from external point, (2) two tangents from external point equal length, (3) sector area / arc length, (4) chord perpendicular to radius. Four distinct theorems, four distinct sub-questions.
+- Real-world contexts must also vary (already required), but topic diversity is the PRIMARY requirement; context diversity is secondary. Two case studies on different sub-topics in the same context is better than two on the same sub-topic in different contexts.
+- Verify before submitting: read across the case studies' first sub-question. If any two ask the same thing structurally, you have a duplication problem — rewrite.`;
 
 const IMAGE_RULES = `
 IMAGE RULES — for each case study, choose AT MOST ONE of three paths (or omit all). The right path depends on what the diagram must show.
@@ -69,6 +76,10 @@ imageSvg is a JSON object: {
 SVG arc path for a sector with central angle θ (degrees) at center (cx, cy) with radius r, starting from angle 0:
   d = "M cx cy L (cx + r) cy A r r 0 [largeArc] 1 (cx + r·cos(θ)) (cy + r·sin(θ)) Z"
   where largeArc = 1 if θ > 180 else 0.
+
+SVG DIVERSITY (when multiple case studies exist):
+- If two case studies have similar underlying geometry (e.g. both involve a circle and a tangent), the SVG diagrams must STILL look meaningfully different. Vary the radius proportions, line orientation, viewBox composition, OR add scenario-specific decorative elements that hint at the context (e.g. spokes inside the wheel for a bicycle; coil or vertical line for a pulley rope; wavy lines inside the circle for a well's water surface; petals around the circle for a flower bed).
+- Identical-looking SVGs across case studies signal that the case studies themselves are duplicated and should be re-conceived (see DIVERSITY rules above).
 
 OPTION 2 — Emit "imagePrompt" (Track A, AI image generation):
 USE THIS for real-world scenes, decorative illustrations, and concept art where exactness doesn't matter. The image is visual flavor, not measurement.

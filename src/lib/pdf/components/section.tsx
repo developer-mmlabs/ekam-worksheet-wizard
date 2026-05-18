@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, Image, StyleSheet } from "@react-pdf/renderer";
 import { QuestionSection, Question, CaseStudy, TemplateTheme } from "@/types";
+import { SvgDiagramBlock } from "./svg-diagram";
 
 interface SectionProps {
   section: QuestionSection;
@@ -42,16 +43,26 @@ export function QuestionSectionBlock({ section, theme }: SectionProps) {
 }
 
 function CaseStudyBlock({ caseStudy, styles }: { caseStudy: CaseStudy; styles: Styles }) {
-  const hasImage = Boolean(caseStudy.imageUrl);
+  // Priority: SVG diagram (math-exact) > AI-generated image > text-only
+  const hasSvg = Boolean(caseStudy.imageSvg?.shapes?.length);
+  const hasImage = !hasSvg && Boolean(caseStudy.imageUrl);
+  const hasVisual = hasSvg || hasImage;
+
   return (
     <View style={styles.caseStudyBlock} wrap={false}>
       <Text style={styles.caseStudyLabel}>Case Study {caseStudy.number}</Text>
-      {hasImage ? (
+      {hasVisual ? (
         <View style={styles.caseStudyImageRow}>
           <View style={styles.caseStudyTextCol}>
             <Text style={styles.caseStudyStimulus}>{caseStudy.stimulus}</Text>
           </View>
-          <Image src={caseStudy.imageUrl!} style={styles.caseStudyImage} />
+          {hasSvg ? (
+            <View style={styles.caseStudyImage}>
+              <SvgDiagramBlock diagram={caseStudy.imageSvg!} width={110} height={110} />
+            </View>
+          ) : (
+            <Image src={caseStudy.imageUrl!} style={styles.caseStudyImage} />
+          )}
         </View>
       ) : (
         <Text style={styles.caseStudyStimulus}>{caseStudy.stimulus}</Text>

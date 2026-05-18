@@ -104,7 +104,73 @@ export interface CaseStudy {
   questions: Question[];
   imagePrompt?: string; // Track A: AI-generation prompt
   imageNcertHint?: string; // Track B: hint for cropping the right NCERT figure (not yet implemented; skipped at runtime)
+  imageSvg?: SvgDiagram; // Track D: math-exact SVG diagram, rendered directly via react-pdf primitives
   imageUrl?: string; // Populated after Track A gen + upload, or Track B crop. Consumed by PDF renderer.
+}
+
+// ============================================================
+// SVG diagram primitives (Track D — math-exact diagrams)
+// LLM emits a JSON description of shapes; renderer maps to react-pdf
+// Svg components. Coordinates are in viewBox-space (not points).
+// ============================================================
+
+export type SvgShape =
+  | {
+      type: "circle";
+      cx: number;
+      cy: number;
+      r: number;
+      fill?: string;
+      stroke?: string;
+      strokeWidth?: number;
+    }
+  | {
+      type: "rect";
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      fill?: string;
+      stroke?: string;
+      strokeWidth?: number;
+    }
+  | {
+      type: "line";
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      stroke?: string;
+      strokeWidth?: number;
+      strokeDasharray?: string;
+    }
+  | {
+      type: "path";
+      d: string; // SVG path data (M, L, A, Q, C, Z commands)
+      fill?: string;
+      stroke?: string;
+      strokeWidth?: number;
+    }
+  | {
+      type: "polygon";
+      points: string; // "x1,y1 x2,y2 x3,y3 ..."
+      fill?: string;
+      stroke?: string;
+      strokeWidth?: number;
+    }
+  | {
+      type: "text";
+      x: number;
+      y: number;
+      text: string;
+      fontSize?: number;
+      textAnchor?: "start" | "middle" | "end";
+      fill?: string;
+    };
+
+export interface SvgDiagram {
+  viewBox: string; // e.g. "0 0 200 200" — square recommended for case studies
+  shapes: SvgShape[];
 }
 
 export interface Question {

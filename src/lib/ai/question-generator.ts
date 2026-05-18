@@ -40,31 +40,57 @@ QUALITY RULES FOR THE STIMULUS-AND-SUBQUESTIONS BLOCK:
 - When generating MULTIPLE case studies, each one must use a DIFFERENT real-world context (e.g. don't make every case study about athletes - one could be finance, another design, another daily-life logistics, another sports). Different chapter sub-topics where applicable.`;
 
 const IMAGE_RULES = `
-IMAGE RULES — for each case study, decide whether to include an image and which path to use. Modern image-generation models (Gemini 2.5/3 Image, GPT Image 2) reliably handle illustrative diagrams with simple labels, layouts, and real-world scenes — use AI generously where it fits.
+IMAGE RULES — for each case study, choose AT MOST ONE of three paths (or omit all). The right path depends on what the diagram must show.
 
-OPTION 1 — Emit "imagePrompt" (Track A, AI image generation):
-Use when the image is a SCENE, ILLUSTRATIVE DIAGRAM, LAYOUT, or simple chart that current AI image models can produce well. Examples:
+OPTION 1 — Emit "imageSvg" (Track D, math-exact SVG diagram):
+USE THIS for any case study where the diagram must show specific MEASURABLE quantities — exact angles, exact ratios, exact coordinates, exact proportions. SVG is math-exact: a 72° sector drawn in SVG is literally 72°. AI image generation cannot honor measurable geometry.
+Use Track D for:
+- Sectors of circles with specific central angles (e.g. 72°, 120°, 45°)
+- Triangles with labelled vertices, side lengths, or angle markers
+- Coordinate planes (XY axes, tick marks, labelled points like (-3, 0))
+- Parabolas / quadratic curves with marked vertex and zeros
+- Rectangles / quadrilaterals with labelled dimensions
+- Circles with chords, tangents, inscribed/circumscribed shapes
+- Line segments and angle marks in geometry proofs
+- Simple block/force/optics diagrams
+
+imageSvg is a JSON object: {
+  "viewBox": "0 0 200 200",         // square coordinate space recommended
+  "shapes": [                        // array of primitives, drawn in order
+    // Available shape types:
+    { "type": "circle", "cx": 100, "cy": 100, "r": 80, "stroke": "#2563eb", "strokeWidth": 1.5 },
+    { "type": "rect",   "x": 20, "y": 40, "width": 60, "height": 40, "fill": "#fde68a", "stroke": "#92400e" },
+    { "type": "line",   "x1": 0, "y1": 100, "x2": 200, "y2": 100, "stroke": "#1f2937", "strokeWidth": 1, "strokeDasharray": "3 2" },
+    { "type": "path",   "d": "M 100 100 L 100 20 A 80 80 0 0 1 175 130 Z", "fill": "#fbbf24", "stroke": "#92400e" },  // for sectors, parabolas, arcs
+    { "type": "polygon", "points": "100,20 175,150 25,150", "fill": "none", "stroke": "#2563eb" },                    // triangles
+    { "type": "text",   "x": 100, "y": 60, "text": "72°", "fontSize": 10, "textAnchor": "middle" }                   // labels
+  ]
+}
+SVG arc path for a sector with central angle θ (degrees) at center (cx, cy) with radius r, starting from angle 0:
+  d = "M cx cy L (cx + r) cy A r r 0 [largeArc] 1 (cx + r·cos(θ)) (cy + r·sin(θ)) Z"
+  where largeArc = 1 if θ > 180 else 0.
+
+OPTION 2 — Emit "imagePrompt" (Track A, AI image generation):
+USE THIS for real-world scenes, decorative illustrations, and concept art where exactness doesn't matter. The image is visual flavor, not measurement.
 - Real-world scenes: "A young Indian student flying a colourful diamond kite in an open park..."
-- Concept illustrations with simple labels: "A parabolic satellite dish receiving incoming signals concentrated at a focal point, labels: FOCUS, AXIS OF SYMMETRY, PARABOLA, INCOMING SIGNALS"
-- Layout/design diagrams: "Aerial view of a rectangular garden divided into two flower beds with a walking path along one side, dimensions labelled: Total Length 10 m, Total Width 6 m, Flower Bed A, Flower Bed B, Walking Path"
-- Simple data visualisations: "A flat infographic showing a 100-question quiz split: x questions learned correctly (green ticks) and 100-x questions guessed wrong (red crosses)"
-- Style: flat illustrative, soft colours, white background, minimal short labels (1-5 words each).
-- Prompt format: 1-3 sentences describing the scene/diagram. List key labels in plain language; trust the renderer to place them sensibly.
+- Decorative concept illustrations: "A parabolic satellite dish receiving incoming signals concentrated at a focal point..."  (note: if the case study actually computes the parabola's equation, use Track D imageSvg instead)
+- Style: flat illustrative, soft colours, white background.
+- Prompt format: 1-3 sentences describing the scene. The image will NOT honor specific angles or ratios — only stylistic mood. If the case study text mentions specific quantities, prefer Track D.
 
-OPTION 2 — Emit "imageNcertHint" (Track B, NCERT extraction — currently a no-op; placeholder for future):
-Use when the image is something current AI image generation still CANNOT do reliably:
+OPTION 3 — Emit "imageNcertHint" (Track B, NCERT extraction — currently a no-op; placeholder for future):
+USE THIS for things AI image generation CANNOT do AND SVG cannot do:
 - Outline maps with country/state borders (India political map, world map)
-- Recognisable likeness of specific named historical figures (Gandhi, Nehru, Bose, Lala Lajpat Rai, etc.)
+- Recognisable likeness of specific named historical figures (Gandhi, Nehru, etc.)
 - Exact NCERT-original political cartoons or paintings
-- Anatomically precise labelled diagrams (heart with all chambers/valves, eye with retina/cornea, alimentary canal) where pedagogical accuracy matters
-- Electrical circuit topology where component connectivity must be correct
-imageNcertHint format: a short phrase describing what should be found/cropped from NCERT material, e.g. "Political outline map of India with state borders", "Portrait of Mahatma Gandhi", "Diagram of the human eye with retina and cornea labelled".
+- Anatomically precise labelled biological diagrams (heart chambers/valves, eye retina/cornea/lens) where scientific accuracy matters
+- Electrical circuit topology where component connectivity must be electrically correct
+imageNcertHint format: a short phrase describing what should be cropped, e.g. "Political outline map of India with state borders".
 
 CHOICE RULES:
-- Pick AT MOST ONE of the two fields per case study. Never both.
-- OMIT BOTH fields when no image adds pedagogical value (abstract math problems, text-only source extracts where the extract itself IS the content).
-- Do not invent images just to fill the field — pedagogical value first.
-- Do not name real public figures or branded products in Option 1 prompts. If a public figure is essential, use Option 2.`;
+- Pick AT MOST ONE of the three fields per case study. Never multiple.
+- OMIT all three when no image adds pedagogical value (abstract math problems, text-only source extracts).
+- If a case study mentions specific angles, lengths, ratios, or coordinates that need to be VISUALLY ACCURATE, you MUST prefer Track D imageSvg over Track A imagePrompt. Track A cannot honor exact geometry.
+- Do not name real public figures in Track A prompts. If a public figure is essential, use Track B.`;
 
 const ASSERTION_REASON_QUALITY_RULES = `
 QUALITY RULES FOR ASSERTION-REASON SECTION:
@@ -139,8 +165,9 @@ JSON SCHEMA:
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word real-world scenario, 8-12 lines>",
-        "imagePrompt": "<EITHER an AI image prompt (Track A) OR omit and use imageNcertHint instead, OR omit both>",
-        "imageNcertHint": "<EITHER a Track B hint for NCERT extraction (e.g. 'India political map') OR omit>",
+        "imageSvg": { "viewBox": "0 0 200 200", "shapes": [ /* Track D shapes, OR omit this field */ ] },
+        "imagePrompt": "<Track A AI prompt, OR omit>",
+        "imageNcertHint": "<Track B NCERT hint (e.g. 'India political map'), OR omit>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
@@ -206,8 +233,9 @@ JSON SCHEMA:
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word scientific scenario, 8-12 lines>",
-        "imagePrompt": "<Option 1 AI prompt OR omit>",
-        "imageNcertHint": "<Option 2 NCERT hint OR omit>",
+        "imageSvg": { "viewBox": "0 0 200 200", "shapes": [ /* Track D shapes, OR omit this field */ ] },
+        "imagePrompt": "<Track A AI prompt OR omit>",
+        "imageNcertHint": "<Track B NCERT hint OR omit>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
@@ -273,8 +301,9 @@ JSON SCHEMA:
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word source extract, 8-12 lines, primary-text style>",
-        "imagePrompt": "<Option 1 AI prompt OR omit>",
-        "imageNcertHint": "<Option 2 NCERT hint (e.g. 'India political map', 'Portrait of Gandhi') OR omit>",
+        "imageSvg": { "viewBox": "0 0 200 200", "shapes": [ /* Track D shapes (e.g. data charts), OR omit */ ] },
+        "imagePrompt": "<Track A AI prompt OR omit>",
+        "imageNcertHint": "<Track B NCERT hint (e.g. 'India political map', 'Portrait of Gandhi') OR omit>",
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}

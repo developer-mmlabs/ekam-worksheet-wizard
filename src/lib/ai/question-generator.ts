@@ -103,6 +103,111 @@ CHOICE RULES:
 - If a case study mentions specific angles, lengths, ratios, or coordinates that need to be VISUALLY ACCURATE, you MUST prefer Track D imageSvg over Track A imagePrompt. Track A cannot honor exact geometry.
 - Do not name real public figures in Track A prompts. If a public figure is essential, use Track B.`;
 
+const SVG_MATH_PATTERNS = `
+SVG MATH DIAGRAMS — compute first, then draw.
+
+CRITICAL: Do NOT eyeball proportions. BEFORE emitting the SVG:
+1. Read the numeric quantities from the stimulus (radius, chord, angle, side lengths, etc.).
+2. Derive any dependent quantities using the relevant formula.
+3. Choose a scale factor s so the largest dimension fits comfortably in viewBox "0 0 200 200" (typical: largest length → ~80 viewBox units).
+4. Compute every SVG coordinate from the scaled quantities.
+5. ONLY THEN emit the SVG shapes.
+Coordinate convention: viewBox "0 0 200 200", diagram centered at (100, 100). SVG y increases DOWNWARD (so "above center" means smaller y).
+
+Use these worked patterns when the case study matches.
+
+PATTERN A — Circle + chord + perpendicular from center to chord
+Given: radius R, chord length C.
+Compute: half_chord h = C/2; distance from center to chord d = sqrt(R*R - h*h).
+Scale: s = 80/R; svg_R = 80; svg_h = h*s; svg_d = d*s.
+Place chord horizontal above center; midpoint at (100, 100 - svg_d). Draw perpendicular from center (100, 100) down to the midpoint.
+Example for R=10, C=16: h=8, d=6, s=8 → svg_h=64, svg_d=48. Chord from (36, 52) to (164, 52). Midpoint (100, 52).
+SVG:
+{
+  "viewBox": "0 0 200 200",
+  "shapes": [
+    { "type": "circle", "cx": 100, "cy": 100, "r": 80, "stroke": "#2563eb", "strokeWidth": 1.5 },
+    { "type": "line",   "x1": 36, "y1": 52, "x2": 164, "y2": 52, "stroke": "#1f2937", "strokeWidth": 1.5 },
+    { "type": "line",   "x1": 100, "y1": 100, "x2": 100, "y2": 52, "stroke": "#1f2937", "strokeWidth": 1, "strokeDasharray": "3 2" },
+    { "type": "circle", "cx": 100, "cy": 52, "r": 3, "fill": "#f59e0b" },
+    { "type": "circle", "cx": 100, "cy": 100, "r": 2, "fill": "#1f2937" },
+    { "type": "text",   "x": 100, "y": 178, "text": "chord = 16 m", "fontSize": 9, "textAnchor": "middle" },
+    { "type": "text",   "x": 105, "y": 80,  "text": "6 m", "fontSize": 9 }
+  ]
+}
+
+PATTERN B — Sector with central angle θ
+Compute (θ in degrees): θ_rad = θ * π / 180; end_x = 100 + 80*cos(θ_rad); end_y = 100 + 80*sin(θ_rad); largeArc = (θ > 180) ? 1 : 0.
+SVG path "d" = "M 100 100 L 180 100 A 80 80 0 \${largeArc} 1 \${end_x} \${end_y} Z".
+Example for θ=72°: cos(72°)≈0.309, sin(72°)≈0.951 → end (124.7, 176.1). Path: "M 100 100 L 180 100 A 80 80 0 0 1 124.7 176.1 Z".
+SVG:
+{
+  "viewBox": "0 0 200 200",
+  "shapes": [
+    { "type": "circle", "cx": 100, "cy": 100, "r": 80, "stroke": "#2563eb", "strokeWidth": 1.5, "fill": "none" },
+    { "type": "path",   "d": "M 100 100 L 180 100 A 80 80 0 0 1 124.7 176.1 Z", "fill": "#fde68a", "stroke": "#92400e", "strokeWidth": 1 },
+    { "type": "text",   "x": 135, "y": 125, "text": "72°", "fontSize": 10 },
+    { "type": "text",   "x": 140, "y": 95,  "text": "r", "fontSize": 9 }
+  ]
+}
+
+PATTERN C — Tangent from external point on a ground line
+Given: circle radius R, external point at distance D from center.
+Compute: tangent length t = sqrt(D*D - R*R). Place circle so it rests on the ground line (center above ground by R).
+Place: circle center (100, 90) with svg_R=70; ground line y=160; external point on ground at (170, 160) with tangent line from external point to top of circle's right side. Mark the right-angle at the tangent point (perpendicularity of tangent to radius).
+SVG:
+{
+  "viewBox": "0 0 200 200",
+  "shapes": [
+    { "type": "circle", "cx": 100, "cy": 90, "r": 70, "stroke": "#2563eb", "strokeWidth": 1.5 },
+    { "type": "line",   "x1": 5, "y1": 160, "x2": 195, "y2": 160, "stroke": "#1f2937", "strokeWidth": 1.5 },
+    { "type": "line",   "x1": 100, "y1": 90, "x2": 100, "y2": 160, "stroke": "#1f2937", "strokeWidth": 1, "strokeDasharray": "3 2" },
+    { "type": "rect",   "x": 97, "y": 157, "width": 6, "height": 6, "stroke": "#1f2937", "strokeWidth": 0.8, "fill": "none" },
+    { "type": "text",   "x": 100, "y": 178, "text": "A", "fontSize": 11, "textAnchor": "middle" }
+  ]
+}
+
+PATTERN D — Coordinate plane with marked points
+Place axes through (100, 100). Choose unit u based on max coordinate magnitude (e.g. for points within ±6, use u=15px). Plot (x, y) at SVG (100 + x*u, 100 - y*u). SVG y is DOWN so always NEGATE y for plotting.
+Example marking zeros (-3, 0) and (5, 0) with u=15:
+SVG:
+{
+  "viewBox": "0 0 200 200",
+  "shapes": [
+    { "type": "line", "x1": 10, "y1": 100, "x2": 190, "y2": 100, "stroke": "#9ca3af", "strokeWidth": 1 },
+    { "type": "line", "x1": 100, "y1": 10, "x2": 100, "y2": 190, "stroke": "#9ca3af", "strokeWidth": 1 },
+    { "type": "circle", "cx": 55, "cy": 100, "r": 3, "fill": "#dc2626" },
+    { "type": "circle", "cx": 175, "cy": 100, "r": 3, "fill": "#dc2626" },
+    { "type": "text", "x": 55, "y": 115, "text": "(-3, 0)", "fontSize": 8, "textAnchor": "middle" },
+    { "type": "text", "x": 175, "y": 115, "text": "(5, 0)", "fontSize": 8, "textAnchor": "middle" }
+  ]
+}
+
+PATTERN E — Triangle with labelled vertices
+Polygon with 3 points. Label vertices with text just outside each corner.
+Example for a right triangle with legs 6 and 8:
+SVG:
+{
+  "viewBox": "0 0 200 200",
+  "shapes": [
+    { "type": "polygon", "points": "30,160 170,160 30,40", "stroke": "#2563eb", "strokeWidth": 1.5, "fill": "none" },
+    { "type": "rect", "x": 30, "y": 145, "width": 15, "height": 15, "stroke": "#1f2937", "strokeWidth": 0.8, "fill": "none" },
+    { "type": "text", "x": 25, "y": 175, "text": "A", "fontSize": 11 },
+    { "type": "text", "x": 180, "y": 175, "text": "B", "fontSize": 11 },
+    { "type": "text", "x": 25, "y": 35, "text": "C", "fontSize": 11 },
+    { "type": "text", "x": 100, "y": 175, "text": "8 cm", "fontSize": 9, "textAnchor": "middle" },
+    { "type": "text", "x": 18, "y": 105, "text": "6 cm", "fontSize": 9 }
+  ]
+}
+
+GENERAL RULES:
+- ALWAYS label key quantities (radius, chord, angle, side lengths) with "text" shapes positioned near the relevant element.
+- Use stroke color "#2563eb" (blue) for the main shape; "#1f2937" (dark grey) for auxiliary lines; "#9ca3af" (light grey) for axes; "#dc2626" (red) or "#f59e0b" (amber) for marked points.
+- Use strokeDasharray "3 2" for dashed lines (perpendiculars, auxiliary constructions).
+- A small filled circle of r=2-3 at intersection / marked points.
+- A small unfilled rect (6x6) at right-angle markers.
+- For patterns not covered above, follow the same compute-first approach: derive the quantities, scale to fit ~80 viewBox units for the largest dimension, then translate to SVG coordinates.`;
+
 const ASSERTION_REASON_QUALITY_RULES = `
 QUALITY RULES FOR ASSERTION-REASON SECTION:
 - COVER THE FULL BREADTH of the chapter. Identify the chapter's distinct sub-topics, then distribute items so that no single sub-topic gets more than ~30% of the items (e.g. with 10 items, no sub-topic exceeds 3 items).
@@ -147,9 +252,10 @@ ${ASSERTION_REASON_QUALITY_RULES}
 SECTION C - Case Study (${cfg.caseStudy} case studies)
 Each case study has a SUBSTANTIAL real-world stimulus of 150-200 words (8-12 lines), drawing from sports, finance, design, structures, daily life — followed by 4 MCQ sub-questions (4 options each). The stimulus must establish a concrete scenario with multiple named quantities, parties, or constraints so the sub-questions have ample material to interrogate.
 
-Each case study MAY include an image — decide per case study using IMAGE RULES below. Pick at most one of "imagePrompt" or "imageNcertHint", or omit both when no image adds pedagogical value.
+Each case study MAY include an image — decide per case study using IMAGE RULES below.
 ${CASE_STUDY_QUALITY_RULES}
 ${IMAGE_RULES}
+${SVG_MATH_PATTERNS}
 
 GLOBAL RULES:
 - Every question must be directly derived from the chapter content in the provided textbook pages.

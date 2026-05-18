@@ -7,76 +7,73 @@ import type { WorksheetConfigSpec, WorksheetConfigValues, WorksheetControl } fro
 // Control ids must match what the corresponding prompt builder reads.
 // ============================================================
 
-// Optional add-on sections — appear after the CBSE-pattern controls
-// with default 0. The Class 10 prompt builders append matching
-// sections to the worksheet when any of these counts > 0.
+// Optional add-on question types — available across all Class 10 subjects.
+// Defaults to 0 so the standard CBSE A/B/C pattern is unchanged unless
+// the teacher explicitly enables one of these.
 const CLASS10_ADDON_CONTROLS: WorksheetControl[] = [
-  { id: "mcq",               label: "MCQ (optional add-on)",                hint: "1 mark each",  default: 0, min: 0, max: 25 },
-  { id: "fillInTheBlanks",   label: "Fill in the Blanks (optional)",        hint: "1 mark each",  default: 0, min: 0, max: 15 },
-  { id: "matchTheFollowing", label: "Match the Following (optional)",       hint: "4 marks each", default: 0, min: 0, max: 5 },
-  { id: "veryShort",         label: "Very Short Answer (optional)",         hint: "1 mark each",  default: 0, min: 0, max: 15 },
-  { id: "shortAnswer",       label: "Short Answer with marks (optional)",   hint: "3 marks each", default: 0, min: 0, max: 15 },
-  { id: "longAnswer",        label: "Long Answer / Numerical (optional)",   hint: "5 marks each", default: 0, min: 0, max: 10 },
+  { id: "mcq",               label: "MCQ",                       default: 0, min: 0, max: 25 },
+  { id: "fillInTheBlanks",   label: "Fill in the Blanks",        default: 0, min: 0, max: 15 },
+  { id: "matchTheFollowing", label: "Match the Following",       default: 0, min: 0, max: 5 },
+  { id: "veryShort",         label: "Very Short Answer",         default: 0, min: 0, max: 15 },
+  { id: "longAnswer",        label: "Long Answer / Numerical",   default: 0, min: 0, max: 10 },
 ];
 
 export const WORKSHEET_CONFIGS: Record<string, WorksheetConfigSpec> = {
   "10:mathematics": {
     controls: [
-      { id: "sectionA",        label: "Section A — Short Answer Questions", default: 20, min: 10, max: 35 },
-      { id: "assertionReason", label: "Section B — Assertion-Reason items", default: 10, min: 4,  max: 15 },
-      { id: "caseStudy",       label: "Section C — Case Studies",           default: 4,  min: 1,  max: 6 },
+      { id: "sectionA",        label: "Short Answer Questions", default: 20, min: 0, max: 35 },
+      { id: "assertionReason", label: "Assertion-Reason items", default: 10, min: 0, max: 15 },
+      { id: "caseStudy",       label: "Case Studies",           default: 4,  min: 0, max: 6 },
       ...CLASS10_ADDON_CONTROLS,
     ],
-    helperText: "CBSE Class 10 chapter-wise practice format. Optional add-on sections appear in the worksheet only when their count is set above 0.",
+    helperText: "CBSE Class 10 chapter-wise practice format. Set any question type to 0 to omit it; sections appear in the order they are listed.",
   },
   "10:science": {
     controls: [
-      { id: "sectionA",        label: "Section A — Short Answer Questions", default: 20, min: 10, max: 35 },
-      { id: "assertionReason", label: "Section B — Assertion-Reason items", default: 10, min: 4,  max: 15 },
-      { id: "caseStudy",       label: "Section C — Case Studies",           default: 4,  min: 1,  max: 6 },
+      { id: "sectionA",        label: "Short Answer Questions", default: 20, min: 0, max: 35 },
+      { id: "assertionReason", label: "Assertion-Reason items", default: 10, min: 0, max: 15 },
+      { id: "caseStudy",       label: "Case Studies",           default: 4,  min: 0, max: 6 },
       ...CLASS10_ADDON_CONTROLS,
     ],
-    helperText: "CBSE Class 10 chapter-wise practice format. Optional add-on sections appear in the worksheet only when their count is set above 0.",
+    helperText: "CBSE Class 10 chapter-wise practice format. Set any question type to 0 to omit it; sections appear in the order they are listed.",
   },
   "10:social_studies": {
     controls: [
-      { id: "sectionA",        label: "Section A — Short Answer Questions",        default: 20, min: 10, max: 35 },
-      { id: "assertionReason", label: "Section B — Assertion-Reason items",        default: 10, min: 4,  max: 15 },
-      { id: "caseStudy",       label: "Section C — Source-Based Extracts",         default: 4,  min: 1,  max: 6 },
+      { id: "sectionA",        label: "Short Answer Questions",  default: 20, min: 0, max: 35 },
+      { id: "assertionReason", label: "Assertion-Reason items",  default: 10, min: 0, max: 15 },
+      { id: "caseStudy",       label: "Source-Based Extracts",   default: 4,  min: 0, max: 6 },
       ...CLASS10_ADDON_CONTROLS,
     ],
-    helperText: "CBSE Class 10 chapter-wise practice format. Optional add-on sections appear in the worksheet only when their count is set above 0.",
+    helperText: "CBSE Class 10 chapter-wise practice format. Set any question type to 0 to omit it; sections appear in the order they are listed.",
   },
   "10:english": {
     controls: [
-      { id: "sectionA",        label: "Section A — Short Answer / Reading", default: 20, min: 10, max: 35 },
-      { id: "assertionReason", label: "Section B — Grammar items",          default: 10, min: 4,  max: 15 },
-      { id: "caseStudy",       label: "Section C — Literature Extracts",    default: 2,  min: 1,  max: 4 },
+      { id: "sectionA",        label: "Short Answer / Reading", default: 20, min: 0, max: 35 },
+      { id: "assertionReason", label: "Grammar items",          default: 10, min: 0, max: 15 },
+      { id: "caseStudy",       label: "Literature Extracts",    default: 2,  min: 0, max: 4 },
       ...CLASS10_ADDON_CONTROLS,
     ],
-    helperText: "CBSE Class 10 chapter-wise practice format. Optional add-on sections appear in the worksheet only when their count is set above 0.",
+    helperText: "CBSE Class 10 chapter-wise practice format. Set any question type to 0 to omit it; sections appear in the order they are listed.",
   },
   "10:hindi": {
     controls: [
-      { id: "sectionA",        label: "खंड A — लघु उत्तरीय प्रश्न",   default: 20, min: 10, max: 35 },
-      { id: "assertionReason", label: "खंड B — व्याकरण प्रश्न",       default: 10, min: 4,  max: 15 },
-      { id: "caseStudy",       label: "खंड C — पाठ्यांश आधारित प्रश्न", default: 2,  min: 1,  max: 4 },
+      { id: "sectionA",        label: "लघु उत्तरीय प्रश्न",     default: 20, min: 0, max: 35 },
+      { id: "assertionReason", label: "व्याकरण प्रश्न",         default: 10, min: 0, max: 15 },
+      { id: "caseStudy",       label: "पाठ्यांश आधारित प्रश्न",  default: 2,  min: 0, max: 4 },
       ...CLASS10_ADDON_CONTROLS,
     ],
-    helperText: "CBSE कक्षा 10 अध्यायवार अभ्यास प्रारूप। ऐच्छिक अतिरिक्त खंड तभी जोड़े जाएंगे जब उनकी संख्या 0 से अधिक हो।",
+    helperText: "CBSE कक्षा 10 अध्यायवार अभ्यास प्रारूप। किसी भी प्रकार को 0 करके हटाएं; अनुभाग सूची के क्रम में दिखेंगे।",
   },
 };
 
 // Default UI for any (grade, subject) not yet in WORKSHEET_CONFIGS.
-// Mirrors the historical six-count breakdown so unsupported grades still work.
 export const LEGACY_CONFIG: WorksheetConfigSpec = {
   controls: [
-    { id: "mcq",                label: "MCQ",                  hint: "1 mark each",  default: 12, min: 8,  max: 25 },
-    { id: "fillInTheBlanks",    label: "Fill in the Blanks",   hint: "1 mark each",  default: 0,  min: 0,  max: 15 },
-    { id: "matchTheFollowing",  label: "Match the Following",  hint: "4 marks each", default: 0,  min: 0,  max: 5 },
-    { id: "veryShort",          label: "Very Short Answer",    hint: "1 mark each",  default: 8,  min: 5,  max: 15 },
-    { id: "shortAnswer",        label: "Short Answer",         hint: "3 marks each", default: 6,  min: 3,  max: 15 },
-    { id: "longAnswer",         label: "Long Answer",          hint: "5 marks each", default: 4,  min: 2,  max: 10 },
+    { id: "mcq",                label: "MCQ",                  default: 12, min: 0, max: 25 },
+    { id: "fillInTheBlanks",    label: "Fill in the Blanks",   default: 0,  min: 0, max: 15 },
+    { id: "matchTheFollowing",  label: "Match the Following",  default: 0,  min: 0, max: 5 },
+    { id: "veryShort",          label: "Very Short Answer",    default: 8,  min: 0, max: 15 },
+    { id: "longAnswer",         label: "Long Answer",          default: 4,  min: 0, max: 10 },
   ],
 };
 

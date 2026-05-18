@@ -12,6 +12,14 @@ interface SectionProps {
 export function QuestionSectionBlock({ section, theme }: SectionProps) {
   const styles = createStyles(theme);
 
+  // Defensive: skip sections that have no content (e.g. when the LLM
+  // honoured a count=0 instruction by emitting an empty array).
+  const hasQuestions = (section.questions?.length ?? 0) > 0;
+  const hasCaseStudies = (section.caseStudies?.length ?? 0) > 0;
+  if (!hasQuestions && !hasCaseStudies) {
+    return null;
+  }
+
   return (
     <View style={styles.sectionContainer}>
       <View style={styles.sectionHeader} wrap={false}>

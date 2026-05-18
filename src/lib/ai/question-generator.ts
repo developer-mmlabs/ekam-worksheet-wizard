@@ -343,59 +343,154 @@ const VYAKARAN_QUALITY_RULES = `
 - दो प्रश्न एक ही व्याकरण नियम का एक ही ढंग से परीक्षण नहीं करने चाहिए।
 - प्रत्येक प्रश्न स्वतंत्र अभ्यास हो।`;
 
+// ============================================================
+// Unified section-fragment model. Each question type the prompt can
+// produce — short_answer, assertion_reason, case_study, mcq,
+// fill_in_the_blanks, match_the_following, very_short, long_answer —
+// is represented as a SectionFragment. A Class 10 prompt builder
+// concatenates its 3 subject-specific base fragments with the shared
+// legacy mixin fragments, then calls assembleSections, which filters
+// by count > 0, renumbers as A/B/C/..., and produces the prompt text,
+// JSON schema fragment, and verification block. Sections with count 0
+// are omitted entirely from the prompt.
+// ============================================================
+
+interface SectionFragment {
+  type: string;
+  title: string;
+  count: number;
+  promptBlock: (id: string) => string;
+  schemaEntry: (id: string) => string;
+  verify: (sectionIdx: number) => string[];
+}
+
+function assembleSections(fragments: SectionFragment[]): {
+  totalSections: number;
+  countLines: string;
+  sectionsText: string;
+  schemaText: string;
+  verificationText: string;
+} {
+  const active = fragments.filter((f) => f.count > 0);
+  const idAt = (i: number) => String.fromCharCode(65 + i);
+
+  return {
+    totalSections: active.length,
+    countLines: active
+      .map((f, i) => `- Section ${idAt(i)} (${f.title}): EXACTLY ${f.count} items.`)
+      .join("\n"),
+    sectionsText: active.map((f, i) => f.promptBlock(idAt(i))).join("\n\n"),
+    schemaText: active.map((f, i) => `    ${f.schemaEntry(idAt(i))}`).join(",\n"),
+    verificationText: active.flatMap((f, i) => f.verify(i)).join("\n"),
+  };
+}
+
+// Shared legacy add-on fragments. Marks are intentionally omitted —
+// the worksheet is chapter-wise practice, not an exam paper.
+function legacyMixinFragments(cfg: WorksheetConfigValues): SectionFragment[] {
+  return [
+    {
+      type: "mcq",
+      title: "Multiple Choice Questions",
+      count: cfg.mcq ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Multiple Choice Questions (${cfg.mcq ?? 0} items)
+Stand-alone MCQs with four options each. All four options must be plausible; mix the correct option position across items. Cover the chapter's full breadth.`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Multiple Choice Questions", "type": "mcq",
+      "questions": [{ "number": 1, "text": "<question>", "options": [
+        {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
+        {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
+      ] }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.mcq ?? 0}`],
+    },
+    {
+      type: "fill_in_the_blanks",
+      title: "Fill in the Blanks",
+      count: cfg.fillInTheBlanks ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Fill in the Blanks (${cfg.fillInTheBlanks ?? 0} items)
+Each item is a complete sentence with "______" (six underscores) marking the blank. The blanked term should be a key concept, term, formula, or value from the chapter.`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Fill in the Blanks", "type": "fill_in_the_blanks",
+      "questions": [{ "number": 1, "text": "<sentence with ______>" }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.fillInTheBlanks ?? 0}`],
+    },
+    {
+      type: "match_the_following",
+      title: "Match the Following",
+      count: cfg.matchTheFollowing ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Match the Following (${cfg.matchTheFollowing ?? 0} items)
+Each item has Column A (4-5 terms) and Column B (4-5 matches, shuffled). Terms are key concepts, definitions, formulas, or named entities from the chapter.`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Match the Following", "type": "match_the_following",
+      "questions": [{
+        "number": 1, "text": "Match the items in Column A with Column B",
+        "matchPairs": [
+          {"left": "<term>", "right": "<match>"}, {"left": "<term>", "right": "<match>"},
+          {"left": "<term>", "right": "<match>"}, {"left": "<term>", "right": "<match>"}
+        ]
+      }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.matchTheFollowing ?? 0}`],
+    },
+    {
+      type: "very_short",
+      title: "Very Short Answer Questions",
+      count: cfg.veryShort ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Very Short Answer Questions (${cfg.veryShort ?? 0} items)
+Single-line answer items — definitions, one-word answers, units, formula recall, "state the X" questions. Test breadth of recall, not depth.`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Very Short Answer Questions", "type": "very_short",
+      "questions": [{ "number": 1, "text": "<question>" }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.veryShort ?? 0}`],
+    },
+    {
+      type: "long_answer",
+      title: "Long Answer / Numerical Questions",
+      count: cfg.longAnswer ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Long Answer / Numerical Questions (${cfg.longAnswer ?? 0} items)
+Multi-step problems requiring derivation, proof, or numerical computation. Each item must have 2-3 sub-parts (a, b, c) building toward the final answer.`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Long Answer / Numerical Questions", "type": "long_answer",
+      "questions": [{
+        "number": 1, "text": "<question>",
+        "subparts": ["<subpart a>", "<subpart b>"]
+      }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.longAnswer ?? 0}`],
+    },
+  ];
+}
+
 function class10Maths(chapterName: string, cfg: WorksheetConfigValues): string {
-  const extras = additionalSectionsBlock(cfg, 3);
-  return `You are an expert CBSE Class 10 Mathematics worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
-
-CHAPTER: ${chapterName}
-
-STRICT COUNTS — generate EXACTLY (not approximately):
-- Section A: EXACTLY ${cfg.sectionA} short-answer questions. Not ${cfg.sectionA - 1}, not ${cfg.sectionA + 1}.
-- Section B: EXACTLY ${cfg.assertionReason} assertion-reason items.
-- Section C: EXACTLY ${cfg.caseStudy} case studies (each with EXACTLY 4 MCQ sub-questions).${extras.countLines ? "\n" + extras.countLines : ""}
-Count your output items before submitting.
-
-WORKSHEET STRUCTURE - produce exactly ${3 + extras.extraSectionCount} section${3 + extras.extraSectionCount === 1 ? "" : "s"}:
-
-SECTION A - Short Answer Questions (${cfg.sectionA} items)
-A mixed pool of concept, computation, proof and application questions. No marks shown. No options.
-${SECTION_A_QUALITY_RULES}
-
-SECTION B - Assertion and Reason (${cfg.assertionReason} items)
+  const fragments: SectionFragment[] = [
+    {
+      type: "short_answer",
+      title: "Short Answer Questions",
+      count: cfg.sectionA ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Short Answer Questions (${cfg.sectionA} items)
+A mixed pool of concept, computation, proof and application questions. No options.
+${SECTION_A_QUALITY_RULES}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Short Answer Questions", "type": "short_answer",
+      "questions": [{ "number": 1, "text": "<actual question>" }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.sectionA}`],
+    },
+    {
+      type: "assertion_reason",
+      title: "Assertion and Reason",
+      count: cfg.assertionReason ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Assertion and Reason (${cfg.assertionReason} items)
 Use the standard 4-option key (in section instructions, not per item). Each item is a pair: Assertion (A) and Reason (R) - both full statements derived from chapter concepts.
-${ASSERTION_REASON_QUALITY_RULES}
-
-SECTION C - Case Study (${cfg.caseStudy} case studies)
+${ASSERTION_REASON_QUALITY_RULES}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Assertion and Reason", "type": "assertion_reason",
+      "instructions": ${JSON.stringify(ASSERTION_REASON_KEY)},
+      "questions": [{ "number": 1, "assertion": "<full assertion statement>", "reason": "<full reason statement>", "text": "" }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.assertionReason}`],
+    },
+    {
+      type: "case_study",
+      title: "Case Study",
+      count: cfg.caseStudy ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Case Study (${cfg.caseStudy} case studies)
 Each case study has a SUBSTANTIAL real-world stimulus of 150-200 words (8-12 lines), drawing from sports, finance, design, structures, daily life — followed by 4 MCQ sub-questions (4 options each). The stimulus must establish a concrete scenario with multiple named quantities, parties, or constraints so the sub-questions have ample material to interrogate.
 
 Each case study DEFAULTS to text-only. Include an image ONLY if a trigger in IMAGE RULES fires. Pure algebraic word problems (income & expenditure, ages, time-and-work, ratio / proportion, percent, simple / compound interest) and probability scenarios using cards / dice / coins MUST remain text-only — do not draw familiar objects "for decoration".
 ${CASE_STUDY_QUALITY_RULES}
 ${IMAGE_RULES}
-${SVG_MATH_PATTERNS}
-${extras.textBlock}
-
-GLOBAL RULES:
-- Every question must be directly derived from the chapter content in the provided textbook pages.
-- Output PURE JSON only - no markdown fences, no commentary, no preamble.
-${PDF_SAFE_NOTATION}
-
-VERIFICATION before responding:
-- sections[0].questions.length === ${cfg.sectionA}
-- sections[1].questions.length === ${cfg.assertionReason}
-- sections[2].caseStudies.length === ${cfg.caseStudy}
-- Each caseStudies[i].questions.length === 4${extras.verificationBlock ? "\n" + extras.verificationBlock : ""}
-If any count is off, fix it before producing the response.
-
-JSON SCHEMA:
-{
-  "metadata": { "grade": "Grade 10", "subject": "Mathematics", "chapter": "${chapterName}", "totalQuestions": <number> },
-  "sections": [
-    { "id": "A", "title": "Short Answer Questions", "type": "short_answer",
-      "questions": [{ "number": 1, "text": "<actual question>" }] },
-    { "id": "B", "title": "Assertion and Reason", "type": "assertion_reason",
-      "instructions": ${JSON.stringify(ASSERTION_REASON_KEY)},
-      "questions": [{ "number": 1, "assertion": "<full assertion statement>", "reason": "<full reason statement>", "text": "" }] },
-    { "id": "C", "title": "Case Study", "type": "case_study",
+${SVG_MATH_PATTERNS}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Case Study", "type": "case_study",
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word real-world scenario, 8-12 lines>",
@@ -404,34 +499,77 @@ JSON SCHEMA:
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
         ]}]
         /* Optional image field "imageSvg" / "imagePrompt" / "imageNcertHint" — see IMAGE RULES. DEFAULT is to omit all three. */
-      }] }${extras.schemaBlock}
+      }] }`,
+      verify: (i) => [
+        `- sections[${i}].caseStudies.length === ${cfg.caseStudy}`,
+        `- Each sections[${i}].caseStudies[j].questions.length === 4`,
+      ],
+    },
+    ...legacyMixinFragments(cfg),
+  ];
+
+  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments);
+
+  return `You are an expert CBSE Class 10 Mathematics worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
+
+CHAPTER: ${chapterName}
+
+STRICT COUNTS — generate EXACTLY (not approximately):
+${countLines}
+Count your output items before submitting.
+
+WORKSHEET STRUCTURE - produce exactly ${totalSections} section${totalSections === 1 ? "" : "s"}, in this order:
+
+${sectionsText}
+
+GLOBAL RULES:
+- Every question must be directly derived from the chapter content in the provided textbook pages.
+- Output PURE JSON only - no markdown fences, no commentary, no preamble.
+${PDF_SAFE_NOTATION}
+
+VERIFICATION before responding:
+${verificationText}
+If any count is off, fix it before producing the response.
+
+JSON SCHEMA:
+{
+  "metadata": { "grade": "Grade 10", "subject": "Mathematics", "chapter": "${chapterName}", "totalQuestions": <number> },
+  "sections": [
+${schemaText}
   ]
 }`;
 }
 
 function class10Science(chapterName: string, cfg: WorksheetConfigValues): string {
-  const extras = additionalSectionsBlock(cfg, 3);
-  return `You are an expert CBSE Class 10 Science worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
-
-CHAPTER: ${chapterName}
-
-STRICT COUNTS — generate EXACTLY (not approximately):
-- Section A: EXACTLY ${cfg.sectionA} short-answer questions.
-- Section B: EXACTLY ${cfg.assertionReason} assertion-reason items.
-- Section C: EXACTLY ${cfg.caseStudy} case studies (each with EXACTLY 4 MCQ sub-questions).${extras.countLines ? "\n" + extras.countLines : ""}
-Count your output items before submitting.
-
-WORKSHEET STRUCTURE - produce exactly ${3 + extras.extraSectionCount} section${3 + extras.extraSectionCount === 1 ? "" : "s"}:
-
-SECTION A - Short Answer Questions (${cfg.sectionA} items)
-A mixed pool of concept, explanation, application and reasoning questions. Include at least 4 "Give a reason for..." or "Explain why..." items. No marks shown.
-${SECTION_A_QUALITY_RULES}
-
-SECTION B - Assertion and Reason (${cfg.assertionReason} items)
+  const fragments: SectionFragment[] = [
+    {
+      type: "short_answer",
+      title: "Short Answer Questions",
+      count: cfg.sectionA ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Short Answer Questions (${cfg.sectionA} items)
+A mixed pool of concept, explanation, application and reasoning questions. Include at least 4 "Give a reason for..." or "Explain why..." items.
+${SECTION_A_QUALITY_RULES}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Short Answer Questions", "type": "short_answer",
+      "questions": [{ "number": 1, "text": "<question>" }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.sectionA}`],
+    },
+    {
+      type: "assertion_reason",
+      title: "Assertion and Reason",
+      count: cfg.assertionReason ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Assertion and Reason (${cfg.assertionReason} items)
 Standard 4-option key (in section instructions). Each item is a pair: Assertion (A) and Reason (R) - both full statements from chapter concepts.
-${ASSERTION_REASON_QUALITY_RULES}
-
-SECTION C - Case Study (${cfg.caseStudy} case studies)
+${ASSERTION_REASON_QUALITY_RULES}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Assertion and Reason", "type": "assertion_reason",
+      "instructions": ${JSON.stringify(ASSERTION_REASON_KEY)},
+      "questions": [{ "number": 1, "assertion": "<statement>", "reason": "<statement>", "text": "" }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.assertionReason}`],
+    },
+    {
+      type: "case_study",
+      title: "Case Study",
+      count: cfg.caseStudy ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Case Study (${cfg.caseStudy} case studies)
 Each case study has a SUBSTANTIAL scientific stimulus of 150-200 words (8-12 lines) — an experimental setup, real-world phenomenon, observation table, or principle in action — followed by 4 MCQ sub-questions (4 options each). Include data, numbers, specific observations, and named entities so the sub-questions have rich material to probe.
 
 Each case study DEFAULTS to text-only. Include an image ONLY if a trigger in IMAGE RULES fires — e.g., a ray diagram, circuit, anatomy figure, or real-world setup that is the central anchor of the scenario. Observation-table stimuli, chemistry word problems, and reasoning-only items (where the data is already in the text) MUST remain text-only.
@@ -440,8 +578,38 @@ ${IMAGE_RULES}
 Science-specific guidance (when an image IS warranted):
 - For real-world phenomena that anchor the scenario (power plants, ecosystems, household appliances, lab observations from a distance): Trigger B → imagePrompt works well.
 - For precise circuit diagrams, ray diagrams, anatomically accurate labelled specimens: Trigger C → imageNcertHint — Track B (NCERT) is more reliable for these than AI image gen.
-- Track D (imageSvg) suits simple ray-paths, lens / mirror setups, free-body diagrams, and any case where specific angles or distances are interrogated.
-${extras.textBlock}
+- Track D (imageSvg) suits simple ray-paths, lens / mirror setups, free-body diagrams, and any case where specific angles or distances are interrogated.`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Case Study", "type": "case_study",
+      "caseStudies": [{
+        "number": 1,
+        "stimulus": "<150-200 word scientific scenario, 8-12 lines>",
+        "questions": [{ "number": 1, "text": "<sub-question>", "options": [
+          {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
+          {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
+        ]}]
+        /* Optional image field "imageSvg" / "imagePrompt" / "imageNcertHint" — see IMAGE RULES. DEFAULT is to omit all three. */
+      }] }`,
+      verify: (i) => [
+        `- sections[${i}].caseStudies.length === ${cfg.caseStudy}`,
+        `- Each sections[${i}].caseStudies[j].questions.length === 4`,
+      ],
+    },
+    ...legacyMixinFragments(cfg),
+  ];
+
+  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments);
+
+  return `You are an expert CBSE Class 10 Science worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
+
+CHAPTER: ${chapterName}
+
+STRICT COUNTS — generate EXACTLY (not approximately):
+${countLines}
+Count your output items before submitting.
+
+WORKSHEET STRUCTURE - produce exactly ${totalSections} section${totalSections === 1 ? "" : "s"}, in this order:
+
+${sectionsText}
 
 GLOBAL RULES:
 - Every question directly derived from the chapter content in the provided textbook pages.
@@ -451,57 +619,47 @@ GLOBAL RULES:
 ${PDF_SAFE_NOTATION}
 
 VERIFICATION before responding:
-- sections[0].questions.length === ${cfg.sectionA}
-- sections[1].questions.length === ${cfg.assertionReason}
-- sections[2].caseStudies.length === ${cfg.caseStudy}
-- Each caseStudies[i].questions.length === 4${extras.verificationBlock ? "\n" + extras.verificationBlock : ""}
+${verificationText}
 
 JSON SCHEMA:
 {
   "metadata": { "grade": "Grade 10", "subject": "Science", "chapter": "${chapterName}", "totalQuestions": <number> },
   "sections": [
-    { "id": "A", "title": "Short Answer Questions", "type": "short_answer",
-      "questions": [{ "number": 1, "text": "<question>" }] },
-    { "id": "B", "title": "Assertion and Reason", "type": "assertion_reason",
-      "instructions": ${JSON.stringify(ASSERTION_REASON_KEY)},
-      "questions": [{ "number": 1, "assertion": "<statement>", "reason": "<statement>", "text": "" }] },
-    { "id": "C", "title": "Case Study", "type": "case_study",
-      "caseStudies": [{
-        "number": 1,
-        "stimulus": "<150-200 word scientific scenario, 8-12 lines>",
-        "questions": [{ "number": 1, "text": "<sub-question>", "options": [
-          {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
-          {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
-        ]}]
-        /* Optional image field "imageSvg" / "imagePrompt" / "imageNcertHint" — see IMAGE RULES. DEFAULT is to omit all three. */
-      }] }${extras.schemaBlock}
+${schemaText}
   ]
 }`;
 }
 
 function class10SocialScience(chapterName: string, cfg: WorksheetConfigValues): string {
-  const extras = additionalSectionsBlock(cfg, 3);
-  return `You are an expert CBSE Class 10 Social Science worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
-
-CHAPTER: ${chapterName}
-
-STRICT COUNTS — generate EXACTLY (not approximately):
-- Section A: EXACTLY ${cfg.sectionA} short-answer questions.
-- Section B: EXACTLY ${cfg.assertionReason} assertion-reason items.
-- Section C: EXACTLY ${cfg.caseStudy} source-based extracts (each with EXACTLY 4 sub-questions).${extras.countLines ? "\n" + extras.countLines : ""}
-Count your output items before submitting.
-
-WORKSHEET STRUCTURE - produce exactly ${3 + extras.extraSectionCount} section${3 + extras.extraSectionCount === 1 ? "" : "s"}:
-
-SECTION A - Short Answer Questions (${cfg.sectionA} items)
+  const fragments: SectionFragment[] = [
+    {
+      type: "short_answer",
+      title: "Short Answer Questions",
+      count: cfg.sectionA ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Short Answer Questions (${cfg.sectionA} items)
 A mixed pool of factual recall, cause-effect and analytical questions. Cover the chapter's full breadth across History/Geography/Civics/Economics as relevant.
-${SECTION_A_QUALITY_RULES}
-
-SECTION B - Assertion and Reason (${cfg.assertionReason} items)
+${SECTION_A_QUALITY_RULES}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Short Answer Questions", "type": "short_answer",
+      "questions": [{ "number": 1, "text": "<question>" }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.sectionA}`],
+    },
+    {
+      type: "assertion_reason",
+      title: "Assertion and Reason",
+      count: cfg.assertionReason ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Assertion and Reason (${cfg.assertionReason} items)
 Standard 4-option key. Assertion is a historical/geographical/civic/economic claim; Reason explains.
-${ASSERTION_REASON_QUALITY_RULES}
-
-SECTION C - Source-Based Questions (${cfg.caseStudy} source extracts)
+${ASSERTION_REASON_QUALITY_RULES}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Assertion and Reason", "type": "assertion_reason",
+      "instructions": ${JSON.stringify(ASSERTION_REASON_KEY)},
+      "questions": [{ "number": 1, "assertion": "<statement>", "reason": "<statement>", "text": "" }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.assertionReason}`],
+    },
+    {
+      type: "case_study",
+      title: "Source-Based Questions",
+      count: cfg.caseStudy ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Source-Based Questions (${cfg.caseStudy} source extracts)
 Each item has a 150-200 word source extract (8-12 lines): a quoted speech, treaty excerpt, news report, data passage, or NCERT-style historical narrative — period-authentic and rich enough to support multi-step interpretation. Followed by 4 sub-questions (3 MCQ + 1 short answer OR 4 MCQs).
 
 Each item DEFAULTS to text-only — and most should stay that way. CBSE source-based questions are almost always text-only. Emit an image ONLY when the item is genuinely map-based (political / physical map of India or a region), visual-source-based (a specific political cartoon or photograph that the sub-questions interrogate), or chart-based (a data chart that the sub-questions read off). Quoted-text extracts, speeches, treaty excerpts, news reports, and narrative passages MUST NOT have an image.
@@ -511,30 +669,8 @@ ${IMAGE_RULES}
 Social-Science specific guidance (when an image IS warranted — usually it isn't):
 - For period crowd scenes, everyday-life of an era, generic landscapes (rarely needed): Trigger B → imagePrompt.
 - For political maps with state / country borders, recognisable historical figures by name, NCERT-original political cartoons: Trigger C → imageNcertHint — AI cannot do these reliably.
-- For chart-based interpretation items (bar chart, pie chart, line graph that the sub-questions read off): Trigger A → imageSvg.
-${extras.textBlock}
-
-GLOBAL RULES:
-- Every question directly derived from the chapter content in the provided textbook pages.
-- Indian context preferred for examples.
-- Output PURE JSON only - no markdown fences, no commentary.
-
-VERIFICATION before responding:
-- sections[0].questions.length === ${cfg.sectionA}
-- sections[1].questions.length === ${cfg.assertionReason}
-- sections[2].caseStudies.length === ${cfg.caseStudy}
-- Each caseStudies[i].questions.length === 4${extras.verificationBlock ? "\n" + extras.verificationBlock : ""}
-
-JSON SCHEMA:
-{
-  "metadata": { "grade": "Grade 10", "subject": "Social Science", "chapter": "${chapterName}", "totalQuestions": <number> },
-  "sections": [
-    { "id": "A", "title": "Short Answer Questions", "type": "short_answer",
-      "questions": [{ "number": 1, "text": "<question>" }] },
-    { "id": "B", "title": "Assertion and Reason", "type": "assertion_reason",
-      "instructions": ${JSON.stringify(ASSERTION_REASON_KEY)},
-      "questions": [{ "number": 1, "assertion": "<statement>", "reason": "<statement>", "text": "" }] },
-    { "id": "C", "title": "Source-Based Questions", "type": "case_study",
+- For chart-based interpretation items (bar chart, pie chart, line graph that the sub-questions read off): Trigger A → imageSvg.`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Source-Based Questions", "type": "case_study",
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word source extract, 8-12 lines, primary-text style>",
@@ -543,61 +679,83 @@ JSON SCHEMA:
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
         ]}]
-      }] }${extras.schemaBlock}
+      }] }`,
+      verify: (i) => [
+        `- sections[${i}].caseStudies.length === ${cfg.caseStudy}`,
+        `- Each sections[${i}].caseStudies[j].questions.length === 4`,
+      ],
+    },
+    ...legacyMixinFragments(cfg),
+  ];
+
+  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments);
+
+  return `You are an expert CBSE Class 10 Social Science worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
+
+CHAPTER: ${chapterName}
+
+STRICT COUNTS — generate EXACTLY (not approximately):
+${countLines}
+Count your output items before submitting.
+
+WORKSHEET STRUCTURE - produce exactly ${totalSections} section${totalSections === 1 ? "" : "s"}, in this order:
+
+${sectionsText}
+
+GLOBAL RULES:
+- Every question directly derived from the chapter content in the provided textbook pages.
+- Indian context preferred for examples.
+- Output PURE JSON only - no markdown fences, no commentary.
+${PDF_SAFE_NOTATION}
+
+VERIFICATION before responding:
+${verificationText}
+
+JSON SCHEMA:
+{
+  "metadata": { "grade": "Grade 10", "subject": "Social Science", "chapter": "${chapterName}", "totalQuestions": <number> },
+  "sections": [
+${schemaText}
   ]
 }`;
 }
 
 function class10English(chapterName: string, cfg: WorksheetConfigValues): string {
-  const extras = additionalSectionsBlock(cfg, 3);
-  return `You are an expert CBSE Class 10 English (Language and Literature) worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
-
-CHAPTER: ${chapterName}
-
-STRICT COUNTS — generate EXACTLY (not approximately):
-- Section A: EXACTLY ${cfg.sectionA} reading / comprehension questions.
-- Section B: EXACTLY ${cfg.assertionReason} grammar items.
-- Section C: EXACTLY ${cfg.caseStudy} literature extracts (each with EXACTLY 4-5 sub-questions).${extras.countLines ? "\n" + extras.countLines : ""}
-Count your output items before submitting.
-
-WORKSHEET STRUCTURE - produce exactly ${3 + extras.extraSectionCount} section${3 + extras.extraSectionCount === 1 ? "" : "s"}:
-
-SECTION A - Short Answer / Reading Questions (${cfg.sectionA} items)
-A mixed pool of literal comprehension, inferential questions, vocabulary-in-context (meaning/synonym/antonym), character/theme/setting analysis, and RTC short questions. No options. No marks.
-${SECTION_A_QUALITY_RULES}
-
-SECTION B - Grammar (${cfg.assertionReason} items)
+  const fragments: SectionFragment[] = [
+    {
+      type: "short_answer",
+      title: "Short Answer / Reading Questions",
+      count: cfg.sectionA ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Short Answer / Reading Questions (${cfg.sectionA} items)
+A mixed pool of literal comprehension, inferential questions, vocabulary-in-context (meaning/synonym/antonym), character/theme/setting analysis, and RTC short questions. No options.
+${SECTION_A_QUALITY_RULES}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Short Answer / Reading Questions", "type": "short_answer",
+      "questions": [{ "number": 1, "text": "<question>" }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.sectionA}`],
+    },
+    {
+      type: "short_answer",
+      title: "Grammar",
+      count: cfg.assertionReason ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Grammar (${cfg.assertionReason} items)
 Each item tests a grammatical concept relevant to Class 10 CBSE (Tenses, Reported Speech, Modals, Subject-Verb Concord, Determiners, Active/Passive). Each is either:
 - a fill-in-the-blank with the answer cue in brackets, OR
 - an error-correction sentence, OR
 - a transformation task.
 Stand-alone short items, no options.
-${GRAMMAR_QUALITY_RULES}
-
-SECTION C - Literature Extract (${cfg.caseStudy} extracts)
+${GRAMMAR_QUALITY_RULES}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Grammar", "type": "short_answer",
+      "questions": [{ "number": 1, "text": "<grammar exercise>" }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.assertionReason}`],
+    },
+    {
+      type: "case_study",
+      title: "Literature Extract",
+      count: cfg.caseStudy ?? 0,
+      promptBlock: (id) => `SECTION ${id} - Literature Extract (${cfg.caseStudy} extracts)
 Each extract is a 4-7 line passage (50-90 words) drawn directly from the chapter text — prose or poetry as relevant. Quote the chapter text faithfully; do not paraphrase. Length is naturally constrained by the source text and should NOT be artificially padded. Each extract is followed by 4-5 sub-questions: 2-3 MCQ-style (4 options each) testing comprehension of the extract, and 1-2 short-answer sub-questions testing inference or theme.
-${CASE_STUDY_QUALITY_RULES}
-${extras.textBlock}
-
-GLOBAL RULES:
-- Stay within the chapter's content (textbook pages provided).
-- Use language and tone appropriate for Class 10 CBSE.
-- Output PURE JSON only - no markdown fences, no commentary.
-
-VERIFICATION before responding:
-- sections[0].questions.length === ${cfg.sectionA}
-- sections[1].questions.length === ${cfg.assertionReason}
-- sections[2].caseStudies.length === ${cfg.caseStudy}${extras.verificationBlock ? "\n" + extras.verificationBlock : ""}
-
-JSON SCHEMA:
-{
-  "metadata": { "grade": "Grade 10", "subject": "English", "chapter": "${chapterName}", "totalQuestions": <number> },
-  "sections": [
-    { "id": "A", "title": "Short Answer / Reading Questions", "type": "short_answer",
-      "questions": [{ "number": 1, "text": "<question>" }] },
-    { "id": "B", "title": "Grammar", "type": "short_answer",
-      "questions": [{ "number": 1, "text": "<grammar exercise>" }] },
-    { "id": "C", "title": "Literature Extract", "type": "case_study",
+${CASE_STUDY_QUALITY_RULES}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "Literature Extract", "type": "case_study",
       "caseStudies": [{
         "number": 1,
         "stimulus": "<4-7 line extract (50-90 words) quoted faithfully from the chapter>",
@@ -608,57 +766,76 @@ JSON SCHEMA:
           ]},
           { "number": 4, "text": "<short-answer sub-question, no options>" }
         ]
-      }] }${extras.schemaBlock}
+      }] }`,
+      verify: (i) => [`- sections[${i}].caseStudies.length === ${cfg.caseStudy}`],
+    },
+    ...legacyMixinFragments(cfg),
+  ];
+
+  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments);
+
+  return `You are an expert CBSE Class 10 English (Language and Literature) worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
+
+CHAPTER: ${chapterName}
+
+STRICT COUNTS — generate EXACTLY (not approximately):
+${countLines}
+Count your output items before submitting.
+
+WORKSHEET STRUCTURE - produce exactly ${totalSections} section${totalSections === 1 ? "" : "s"}, in this order:
+
+${sectionsText}
+
+GLOBAL RULES:
+- Stay within the chapter's content (textbook pages provided).
+- Use language and tone appropriate for Class 10 CBSE.
+- Output PURE JSON only - no markdown fences, no commentary.
+${PDF_SAFE_NOTATION}
+
+VERIFICATION before responding:
+${verificationText}
+
+JSON SCHEMA:
+{
+  "metadata": { "grade": "Grade 10", "subject": "English", "chapter": "${chapterName}", "totalQuestions": <number> },
+  "sections": [
+${schemaText}
   ]
 }`;
 }
 
 function class10Hindi(chapterName: string, cfg: WorksheetConfigValues): string {
-  const extras = additionalSectionsBlock(cfg, 3);
-  return `आप एक विशेषज्ञ CBSE कक्षा 10 हिंदी वर्कशीट निर्माता हैं। दिए गए NCERT पाठ्यपुस्तक पृष्ठों के आधार पर अध्यायवार अभ्यास वर्कशीट तैयार करें।
-
-अध्याय: ${chapterName}
-
-कठोर संख्याएँ - ठीक उतनी ही उत्पन्न करें (अनुमानित नहीं):
-- खंड A: ठीक ${cfg.sectionA} लघु उत्तरीय प्रश्न।
-- खंड B: ठीक ${cfg.assertionReason} व्याकरण प्रश्न।
-- खंड C: ठीक ${cfg.caseStudy} पाठ्यांश (प्रत्येक के लिए 4-5 उप-प्रश्न)।${extras.countLines ? "\n" + extras.countLines : ""}
-उत्तर देने से पहले अपनी संख्याएँ गिनें।
-
-वर्कशीट संरचना - ठीक ${3 + extras.extraSectionCount} अनुभाग बनाएं:
-
-खंड A - लघु उत्तरीय प्रश्न (${cfg.sectionA} प्रश्न)
-पाठ्यपुस्तक से अर्थ-ग्रहण, संदर्भ, भाव-स्पष्टीकरण, चरित्र-विश्लेषण, विषय-वस्तु संबंधी मिश्रित लघु प्रश्न। निर्देश शब्दों का प्रयोग: "बताइए", "लिखिए", "स्पष्ट कीजिए", "किसने कहा और क्यों", "आशय स्पष्ट कीजिए"। कोई विकल्प नहीं, कोई अंक नहीं।
-${SECTION_A_QUALITY_RULES}
-
-खंड B - व्याकरण (${cfg.assertionReason} प्रश्न)
+  const fragments: SectionFragment[] = [
+    {
+      type: "short_answer",
+      title: "लघु उत्तरीय प्रश्न",
+      count: cfg.sectionA ?? 0,
+      promptBlock: (id) => `SECTION ${id} - लघु उत्तरीय प्रश्न (${cfg.sectionA} प्रश्न)
+पाठ्यपुस्तक से अर्थ-ग्रहण, संदर्भ, भाव-स्पष्टीकरण, चरित्र-विश्लेषण, विषय-वस्तु संबंधी मिश्रित लघु प्रश्न। निर्देश शब्दों का प्रयोग: "बताइए", "लिखिए", "स्पष्ट कीजिए", "किसने कहा और क्यों", "आशय स्पष्ट कीजिए"। कोई विकल्प नहीं।
+${SECTION_A_QUALITY_RULES}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "लघु उत्तरीय प्रश्न", "type": "short_answer",
+      "questions": [{ "number": 1, "text": "<प्रश्न>" }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.sectionA}`],
+    },
+    {
+      type: "short_answer",
+      title: "व्याकरण",
+      count: cfg.assertionReason ?? 0,
+      promptBlock: (id) => `SECTION ${id} - व्याकरण (${cfg.assertionReason} प्रश्न)
 कक्षा 10 के पाठ्यक्रम से प्रासंगिक व्याकरण: रचना के आधार पर वाक्य भेद, वाच्य, पद-परिचय, रस, समास, अलंकार, मुहावरे। प्रत्येक प्रश्न रिक्त-स्थान, पहचान, या रूपांतरण कार्य हो। कोई विकल्प नहीं।
-${VYAKARAN_QUALITY_RULES}
-
-खंड C - अपठित बोध / पाठ्यांश आधारित प्रश्न (${cfg.caseStudy} गद्यांश/पद्यांश)
+${VYAKARAN_QUALITY_RULES}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "व्याकरण", "type": "short_answer",
+      "questions": [{ "number": 1, "text": "<व्याकरण अभ्यास>" }] }`,
+      verify: (i) => [`- sections[${i}].questions.length === ${cfg.assertionReason}`],
+    },
+    {
+      type: "case_study",
+      title: "पाठ्यांश आधारित प्रश्न",
+      count: cfg.caseStudy ?? 0,
+      promptBlock: (id) => `SECTION ${id} - अपठित बोध / पाठ्यांश आधारित प्रश्न (${cfg.caseStudy} गद्यांश/पद्यांश)
 प्रत्येक के लिए पाठ से 5-8 पंक्तियों का एक अंश (60-100 शब्द) दीजिए और 4-5 उप-प्रश्न दीजिए: 2-3 MCQ (4 विकल्प प्रत्येक) तथा 1-2 लघु उत्तरीय। पाठ का अंश यथावत् उद्धृत करें - व्याख्या नहीं।
-${CASE_STUDY_QUALITY_RULES}
-${extras.textBlock}
-
-सामान्य नियम:
-- सभी प्रश्न दिए गए पाठ्यपुस्तक पृष्ठों के अध्याय की विषय-वस्तु से ही निकाले जाएं।
-- भाषा कक्षा 10 स्तर की हो।
-- केवल शुद्ध JSON दें - कोई markdown fences नहीं, कोई टिप्पणी नहीं।
-
-जाँच - उत्तर देने से पहले:
-- sections[0].questions.length === ${cfg.sectionA}
-- sections[1].questions.length === ${cfg.assertionReason}
-- sections[2].caseStudies.length === ${cfg.caseStudy}${extras.verificationBlock ? "\n" + extras.verificationBlock : ""}
-
-JSON SCHEMA:
-{
-  "metadata": { "grade": "Grade 10", "subject": "Hindi", "chapter": "${chapterName}", "totalQuestions": <number> },
-  "sections": [
-    { "id": "A", "title": "लघु उत्तरीय प्रश्न", "type": "short_answer",
-      "questions": [{ "number": 1, "text": "<प्रश्न>" }] },
-    { "id": "B", "title": "व्याकरण", "type": "short_answer",
-      "questions": [{ "number": 1, "text": "<व्याकरण अभ्यास>" }] },
-    { "id": "C", "title": "पाठ्यांश आधारित प्रश्न", "type": "case_study",
+${CASE_STUDY_QUALITY_RULES}`,
+      schemaEntry: (id) => `{ "id": "${id}", "title": "पाठ्यांश आधारित प्रश्न", "type": "case_study",
       "caseStudies": [{
         "number": 1,
         "stimulus": "<5-8 पंक्तियों का अंश (60-100 शब्द), पाठ से यथावत् उद्धृत>",
@@ -669,183 +846,82 @@ JSON SCHEMA:
           ]},
           { "number": 4, "text": "<लघु उत्तरीय उप-प्रश्न, बिना विकल्प>" }
         ]
-      }] }${extras.schemaBlock}
+      }] }`,
+      verify: (i) => [`- sections[${i}].caseStudies.length === ${cfg.caseStudy}`],
+    },
+    ...legacyMixinFragments(cfg),
+  ];
+
+  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments);
+
+  return `आप एक विशेषज्ञ CBSE कक्षा 10 हिंदी वर्कशीट निर्माता हैं। दिए गए NCERT पाठ्यपुस्तक पृष्ठों के आधार पर अध्यायवार अभ्यास वर्कशीट तैयार करें।
+
+अध्याय: ${chapterName}
+
+कठोर संख्याएँ - ठीक उतनी ही उत्पन्न करें (अनुमानित नहीं):
+${countLines}
+उत्तर देने से पहले अपनी संख्याएँ गिनें।
+
+वर्कशीट संरचना - ठीक ${totalSections} अनुभाग बनाएं, इसी क्रम में:
+
+${sectionsText}
+
+सामान्य नियम:
+- सभी प्रश्न दिए गए पाठ्यपुस्तक पृष्ठों के अध्याय की विषय-वस्तु से ही निकाले जाएं।
+- भाषा कक्षा 10 स्तर की हो।
+- केवल शुद्ध JSON दें - कोई markdown fences नहीं, कोई टिप्पणी नहीं।
+${PDF_SAFE_NOTATION}
+
+जाँच - उत्तर देने से पहले:
+${verificationText}
+
+JSON SCHEMA:
+{
+  "metadata": { "grade": "Grade 10", "subject": "Hindi", "chapter": "${chapterName}", "totalQuestions": <number> },
+  "sections": [
+${schemaText}
   ]
 }`;
 }
 
 // ============================================================
 // Generic fallback prompt (used for grade+subject combinations
-// that don't have a dedicated builder). Reads legacy 6-count keys
-// from the config map.
+// that don't have a dedicated builder). Uses the same legacy mixin
+// fragments as the Class 10 prompts.
 // ============================================================
 
-interface SectionDef {
-  type: string;
-  title: string;
-  count: number;
-  requirement: string;
-  schemaExample: string;
-}
-
-// Six legacy question-type definitions shared by buildGenericPrompt
-// and the Class 10 prompt builders (where they appear as optional
-// "additional sections" appended after Section C when count > 0).
-function legacyMixinDefs(cfg: WorksheetConfigValues): SectionDef[] {
-  return [
-    { type: "mcq", title: "Multiple Choice Questions",
-      count: cfg.mcq ?? 0,
-      requirement: `${cfg.mcq ?? 0} questions, 4 options each, 1 mark each`,
-      schemaExample: `{
-          "number": 1,
-          "text": "<actual question about the chapter>",
-          "marks": 1,
-          "options": [
-            {"label": "a", "text": "<actual option>"}, {"label": "b", "text": "<actual option>"},
-            {"label": "c", "text": "<actual option>"}, {"label": "d", "text": "<actual option>"}
-          ]
-        }` },
-    { type: "fill_in_the_blanks", title: "Fill in the Blanks",
-      count: cfg.fillInTheBlanks ?? 0,
-      requirement: `${cfg.fillInTheBlanks ?? 0} questions, 1 mark each. Use "______" (six underscores) in the sentence where the blank goes`,
-      schemaExample: `{ "number": 1, "text": "<sentence with ______ for the blank>", "marks": 1 }` },
-    { type: "match_the_following", title: "Match the Following",
-      count: cfg.matchTheFollowing ?? 0,
-      requirement: `${cfg.matchTheFollowing ?? 0} questions, each with 4-5 pairs, marks = number of pairs`,
-      schemaExample: `{
-          "number": 1, "text": "Match the items in Column A with Column B", "marks": 4,
-          "matchPairs": [
-            {"left": "<term>", "right": "<match>"}, {"left": "<term>", "right": "<match>"},
-            {"left": "<term>", "right": "<match>"}, {"left": "<term>", "right": "<match>"}
-          ]
-        }` },
-    { type: "very_short", title: "Very Short Answer Questions",
-      count: cfg.veryShort ?? 0,
-      requirement: `${cfg.veryShort ?? 0} questions, 1 mark each`,
-      schemaExample: `{ "number": 1, "text": "<actual question about the chapter>", "marks": 1 }` },
-    { type: "short_answer", title: "Short Answer Questions (marked)",
-      count: cfg.shortAnswer ?? 0,
-      requirement: `${cfg.shortAnswer ?? 0} questions, 3 marks each`,
-      schemaExample: `{ "number": 1, "text": "<actual question about the chapter>", "marks": 3 }` },
-    { type: "long_answer", title: "Long Answer / Numerical Questions",
-      count: cfg.longAnswer ?? 0,
-      requirement: `${cfg.longAnswer ?? 0} questions, 5 marks each, with subparts`,
-      schemaExample: `{
-          "number": 1, "text": "<actual question about the chapter>", "marks": 5,
-          "subparts": ["<actual subpart a>", "<actual subpart b>"]
-        }` },
-  ];
-}
-
-// Build the "additional sections" prompt block + JSON schema fragment +
-// verification lines for any of the 6 legacy types whose count > 0.
-// Returns empty strings when no legacy counts are set so prompts stay
-// clean for the standard CBSE A/B/C-only case.
-function additionalSectionsBlock(
-  cfg: WorksheetConfigValues,
-  baseSectionCount: number, // 3 for Class 10 (A, B, C already exist)
-): {
-  textBlock: string;
-  schemaBlock: string;
-  verificationBlock: string;
-  countLines: string;
-  extraSectionCount: number;
-} {
-  const active = legacyMixinDefs(cfg).filter((d) => d.count > 0);
-  if (active.length === 0) {
-    return { textBlock: "", schemaBlock: "", verificationBlock: "", countLines: "", extraSectionCount: 0 };
-  }
-
-  const withIds = active.map((d, i) => ({
-    ...d,
-    id: String.fromCharCode(65 + baseSectionCount + i), // A=65, so after C(67) → D(68)
-    sectionIdx: baseSectionCount + i,
-  }));
-
-  const textBlock = `
-ADDITIONAL SECTIONS — produce these EXTRA sections AFTER Section C, in order:${withIds
-    .map(
-      (d) => `
-
-SECTION ${d.id} - ${d.title} (${d.count} items)
-${d.requirement}.`,
-    )
-    .join("")}
-All items in additional sections must be derived from the same chapter content. Apply the same originality, anti-duplication, and PDF-safe notation rules as the main sections.`;
-
-  const schemaBlock = withIds
-    .map(
-      (d) => `,
-    { "id": "${d.id}", "title": "${d.title}", "type": "${d.type}",
-      "questions": [
-        ${d.schemaExample}
-      ] }`,
-    )
-    .join("");
-
-  const verificationBlock = withIds
-    .map((d) => `- sections[${d.sectionIdx}].questions.length === ${d.count}`)
-    .join("\n");
-
-  const countLines = withIds.map((d) => `- Section ${d.id}: EXACTLY ${d.count} ${d.title}.`).join("\n");
-
-  return { textBlock, schemaBlock, verificationBlock, countLines, extraSectionCount: withIds.length };
-}
-
 function buildGenericPrompt(cfg: WorksheetConfigValues): string {
-  const allSections: SectionDef[] = legacyMixinDefs(cfg);
+  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(
+    legacyMixinFragments(cfg),
+  );
 
-  const sections = allSections
-    .filter((s) => s.count > 0)
-    .map((s, i) => ({ ...s, id: String.fromCharCode(65 + i) }));
+  return `You are an expert educational worksheet creator for Indian schools (CBSE/ICSE curriculum). Generate high-quality worksheet questions from the textbook pages provided.
 
-  const total = sections.reduce((sum, s) => sum + s.count, 0);
-  const aimFor = Math.ceil(total * 1.1);
+STRICT COUNTS — generate EXACTLY (not approximately):
+${countLines}
+Count your output items before submitting.
 
-  const schemaStr = sections
-    .map(
-      (s) => `    {
-      "id": "${s.id}", "title": "${s.title}", "type": "${s.type}",
-      "questions": [
-        ${s.schemaExample}
-      ]
-    }`
-    )
-    .join(",\n");
+WORKSHEET STRUCTURE - produce exactly ${totalSections} section${totalSections === 1 ? "" : "s"}, in this order:
 
-  const requirementsStr = sections
-    .map((s) => `- Section ${s.id} (${s.title}): Exactly ${s.requirement}`)
-    .join("\n");
+${sectionsText}
 
-  return `You are an expert educational worksheet creator for Indian schools (CBSE/ICSE curriculum). Your job is to generate high-quality worksheet questions from textbook content and previous question papers.
+GLOBAL RULES:
+- Every question must be directly derived from the chapter content in the provided textbook pages.
+- Cover the chapter's full breadth — don't cluster questions from just one topic.
+- Progress from simple recall to application and analysis.
+- NEVER use placeholder text like "question text", "option text" — every field must contain actual educational content.
+- Output PURE JSON only — no markdown fences, no commentary.
 
-CRITICAL RULES:
-1. Generate a MINIMUM of ${total} questions across all sections
-2. Questions must be directly derived from the provided textbook content and question papers
-3. Cover the full breadth of the chapter - don't cluster questions from just one topic
-4. Questions should progress from simple recall to application and analysis
-5. For MCQs, all 4 options must be plausible (no obviously wrong answers)
-6. Keep question text concise and clear - suitable for compressed worksheet layout
-7. Include numerical/calculation questions where applicable
-8. Include diagram-based questions where the chapter content involves visual concepts
-9. For Fill in the Blanks, use "______" (six underscores) to indicate the blank within a complete sentence
-10. For Match the Following, provide exactly 4-5 pairs per question with shuffled right-column items
-11. NEVER use placeholder text like "question text", "part a text", "option text" — every field must contain actual educational content from the chapter
+VERIFICATION before responding:
+${verificationText}
 
-OUTPUT FORMAT: You must respond with ONLY valid JSON (no markdown, no code fences, no explanation).
-
-The JSON schema:
+JSON SCHEMA:
 {
-  "metadata": { "grade": "string", "subject": "string", "chapter": "string", "totalQuestions": number },
+  "metadata": { "grade": "string", "subject": "string", "chapter": "string", "totalQuestions": <number> },
   "sections": [
-${schemaStr}
+${schemaText}
   ]
-}
-
-SECTION REQUIREMENTS:
-${requirementsStr}
-
-Total: ${total} questions. Aim for up to ${aimFor} for comprehensive coverage.`;
+}`;
 }
 
 // ============================================================
@@ -922,21 +998,34 @@ export async function generateQuestions(
 
   questions.metadata.totalQuestions = totalQuestions;
 
-  // Log count drift for Class 10 (where we ask for exact counts)
+  // Log count drift for Class 10 (where we ask for exact counts). With
+  // dynamic section ordering, match by type instead of fixed indices.
   if (context.gradeNumber === 10) {
-    const actualSectionA = questions.sections[0]?.questions?.length ?? 0;
-    const actualSectionB = questions.sections[1]?.questions?.length ?? 0;
-    const actualSectionC = questions.sections[2]?.caseStudies?.length ?? 0;
-    const want = {
-      a: config.sectionA ?? 0,
-      b: config.assertionReason ?? 0,
-      c: config.caseStudy ?? 0,
-    };
-    const got = { a: actualSectionA, b: actualSectionB, c: actualSectionC };
-    if (got.a !== want.a || got.b !== want.b || got.c !== want.c) {
+    const sectionCountByType: Record<string, number> = {};
+    questions.sections.forEach((s) => {
+      const n = s.caseStudies?.length ?? s.questions?.length ?? 0;
+      sectionCountByType[s.type] = (sectionCountByType[s.type] ?? 0) + n;
+    });
+
+    const expectations: Array<[string, string, number]> = [
+      ["sectionA", "short_answer", config.sectionA ?? 0],
+      ["assertionReason", "assertion_reason", config.assertionReason ?? 0],
+      ["caseStudy", "case_study", config.caseStudy ?? 0],
+      ["mcq", "mcq", config.mcq ?? 0],
+      ["fillInTheBlanks", "fill_in_the_blanks", config.fillInTheBlanks ?? 0],
+      ["matchTheFollowing", "match_the_following", config.matchTheFollowing ?? 0],
+      ["veryShort", "very_short", config.veryShort ?? 0],
+      ["longAnswer", "long_answer", config.longAnswer ?? 0],
+    ];
+
+    const drift = expectations
+      .filter(([, , want]) => want > 0)
+      .filter(([, type, want]) => (sectionCountByType[type] ?? 0) !== want)
+      .map(([label, type, want]) => `${label}: requested ${want}, got ${sectionCountByType[type] ?? 0}`);
+
+    if (drift.length > 0) {
       console.warn(
-        `[worksheet-gen] Count drift for ${context.subjectSlug} "${context.chapterName}": ` +
-        `requested A=${want.a}/B=${want.b}/C=${want.c}, got A=${got.a}/B=${got.b}/C=${got.c}`
+        `[worksheet-gen] Count drift for ${context.subjectSlug} "${context.chapterName}": ${drift.join("; ")}`,
       );
     }
   }

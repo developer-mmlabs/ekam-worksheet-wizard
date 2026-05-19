@@ -2,8 +2,72 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
-import type { Grade, Subject, Chapter, WorksheetStatus, WorksheetConfigValues } from "@/types";
+import type { Grade, Subject, Chapter, WorksheetStatus, WorksheetConfigValues, WorksheetControl } from "@/types";
 import { getWorksheetConfigSpec, defaultConfigValues } from "@/lib/worksheet-configs";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
+function SortableControlRow({
+  control,
+  value,
+  onChange,
+}: {
+  control: WorksheetControl;
+  value: number;
+  onChange: (n: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: control.id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 p-2 bg-white border border-gray-200 rounded-lg"
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+        className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 p-1 touch-none"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="9" cy="6" r="1.5" /><circle cx="9" cy="12" r="1.5" /><circle cx="9" cy="18" r="1.5" />
+          <circle cx="15" cy="6" r="1.5" /><circle cx="15" cy="12" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+        </svg>
+      </button>
+      <label className="flex-1 text-sm text-gray-700">{control.label}</label>
+      <input
+        type="number"
+        value={value || ""}
+        min={control.min}
+        max={control.max}
+        onChange={(e) => onChange(parseInt(e.target.value) || 0)}
+        onBlur={() => onChange(Math.min(control.max, Math.max(control.min, value)))}
+        className="w-20 rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      />
+    </div>
+  );
+}
 
 export default function GeneratePage() {
   const [grades, setGrades] = useState<Grade[]>([]);
@@ -15,6 +79,7 @@ export default function GeneratePage() {
   const [selectedChapter, setSelectedChapter] = useState("");
 
   const [configValues, setConfigValues] = useState<WorksheetConfigValues>({});
+  const [sectionOrder, setSectionOrder] = useState<string[]>([]);
   const [showOptions, setShowOptions] = useState(false);
 
   const [generating, setGenerating] = useState(false);
@@ -39,15 +104,47 @@ export default function GeneratePage() {
     return getWorksheetConfigSpec(selectedGradeObj.number, selectedSubjectObj.slug);
   }, [selectedGradeObj, selectedSubjectObj]);
 
-  // When the (grade, subject) combination changes, reset config values to that spec's defaults
+  // When the (grade, subject) combination changes, reset config values + section order to spec defaults
   useEffect(() => {
-    if (configSpec) setConfigValues(defaultConfigValues(configSpec));
+    if (configSpec) {
+      setConfigValues(defaultConfigValues(configSpec));
+      setSectionOrder(configSpec.controls.map((c) => c.id));
+    }
   }, [configSpec]);
 
   const totalQuestions = useMemo(
     () => Object.values(configValues).reduce((sum, n) => sum + (n || 0), 0),
     [configValues],
   );
+
+  // Controls displayed in the user's chosen order (defaults to spec order)
+  const orderedControls = useMemo(() => {
+    if (!configSpec) return [] as WorksheetControl[];
+    const byId = new Map(configSpec.controls.map((c) => [c.id, c]));
+    const out: WorksheetControl[] = [];
+    for (const id of sectionOrder) {
+      const c = byId.get(id);
+      if (c) out.push(c);
+    }
+    for (const c of configSpec.controls) {
+      if (!sectionOrder.includes(c.id)) out.push(c);
+    }
+    return out;
+  }, [configSpec, sectionOrder]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = sectionOrder.indexOf(String(active.id));
+    const newIndex = sectionOrder.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    setSectionOrder(arrayMove(sectionOrder, oldIndex, newIndex));
+  }
 
   useEffect(() => {
     return () => {
@@ -179,6 +276,7 @@ export default function GeneratePage() {
           chapterId: selectedChapter,
           schoolId: school.id,
           config: configValues,
+          sectionOrder,
         }),
       });
 
@@ -301,39 +399,25 @@ export default function GeneratePage() {
                 </svg>
               </button>
               {showOptions && (
-                <div className="p-4 space-y-4">
+                <div className="p-4 space-y-3">
                   {configSpec.helperText && (
                     <p className="text-xs text-gray-500 italic">{configSpec.helperText}</p>
                   )}
-                  <div className="grid grid-cols-2 gap-4">
-                    {configSpec.controls.map((control) => {
-                      const value = configValues[control.id] ?? control.default;
-                      return (
-                        <div key={control.id}>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">
-                            {control.label}
-                            {control.hint && (
-                              <span className="text-gray-400 font-normal"> ({control.hint})</span>
-                            )}
-                          </label>
-                          <input
-                            type="number"
-                            value={value || ""}
-                            min={control.min}
-                            max={control.max}
-                            onChange={(e) => updateControl(control.id, parseInt(e.target.value) || 0)}
-                            onBlur={() =>
-                              updateControl(
-                                control.id,
-                                Math.min(control.max, Math.max(control.min, value)),
-                              )
-                            }
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  <p className="text-xs text-gray-400">Drag the rows to reorder. Sections appear in the worksheet in the order listed.</p>
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
+                      <div className="space-y-2">
+                        {orderedControls.map((control) => (
+                          <SortableControlRow
+                            key={control.id}
+                            control={control}
+                            value={configValues[control.id] ?? control.default}
+                            onChange={(n) => updateControl(control.id, n)}
                           />
-                        </div>
-                      );
-                    })}
-                  </div>
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                   <div className="pt-2 border-t border-gray-100">
                     <span className="text-sm font-medium text-gray-700">
                       Total: {totalQuestions} questions

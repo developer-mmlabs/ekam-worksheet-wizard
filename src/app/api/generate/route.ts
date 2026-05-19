@@ -7,7 +7,7 @@ import type { GenerateRequest, WorksheetConfigValues } from "@/types";
 export async function POST(req: NextRequest) {
   try {
     const body: GenerateRequest = await req.json();
-    const { chapterId, schoolId, config: clientConfig } = body;
+    const { chapterId, schoolId, config: clientConfig, sectionOrder } = body;
 
     if (!chapterId || !schoolId) {
       return NextResponse.json({ success: false, error: "chapterId and schoolId are required" }, { status: 400 });
@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
         chapterId,
         schoolId,
         config,
+        sectionOrder,
       },
     });
 

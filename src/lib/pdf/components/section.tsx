@@ -23,12 +23,7 @@ export function QuestionSectionBlock({ section, theme }: SectionProps) {
   return (
     <View style={styles.sectionContainer}>
       <View style={styles.sectionHeader} wrap={false}>
-        <Text style={styles.sectionTitle}>
-          {section.id}: {section.title}
-        </Text>
-        {section.questions?.[0]?.marks && (
-          <Text style={styles.marksLabel}>[{section.questions[0].marks} marks each]</Text>
-        )}
+        <Text style={styles.sectionTitle}>{section.title}</Text>
       </View>
 
       {section.instructions && (

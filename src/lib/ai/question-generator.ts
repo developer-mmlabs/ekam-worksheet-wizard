@@ -356,6 +356,7 @@ const VYAKARAN_QUALITY_RULES = `
 // ============================================================
 
 interface SectionFragment {
+  configId: string; // matches the worksheet config key (e.g. "sectionA", "mcq")
   type: string;
   title: string;
   count: number;
@@ -364,14 +365,38 @@ interface SectionFragment {
   verify: (sectionIdx: number) => string[];
 }
 
-function assembleSections(fragments: SectionFragment[]): {
+// Reorder fragments by user-chosen configId order, with any
+// fragments not listed in `order` appended at the end in their
+// original order.
+function orderFragments(fragments: SectionFragment[], order: string[] | undefined): SectionFragment[] {
+  if (!order || order.length === 0) return fragments;
+  const byId = new Map(fragments.map((f) => [f.configId, f]));
+  const ordered: SectionFragment[] = [];
+  const seen = new Set<string>();
+  for (const id of order) {
+    const f = byId.get(id);
+    if (f && !seen.has(id)) {
+      ordered.push(f);
+      seen.add(id);
+    }
+  }
+  for (const f of fragments) {
+    if (!seen.has(f.configId)) ordered.push(f);
+  }
+  return ordered;
+}
+
+function assembleSections(
+  fragments: SectionFragment[],
+  order?: string[],
+): {
   totalSections: number;
   countLines: string;
   sectionsText: string;
   schemaText: string;
   verificationText: string;
 } {
-  const active = fragments.filter((f) => f.count > 0);
+  const active = orderFragments(fragments, order).filter((f) => f.count > 0);
   const idAt = (i: number) => String.fromCharCode(65 + i);
 
   return {
@@ -390,6 +415,7 @@ function assembleSections(fragments: SectionFragment[]): {
 function legacyMixinFragments(cfg: WorksheetConfigValues): SectionFragment[] {
   return [
     {
+      configId: "mcq",
       type: "mcq",
       title: "Multiple Choice Questions",
       count: cfg.mcq ?? 0,
@@ -403,6 +429,7 @@ Stand-alone MCQs with four options each. All four options must be plausible; mix
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.mcq ?? 0}`],
     },
     {
+      configId: "fillInTheBlanks",
       type: "fill_in_the_blanks",
       title: "Fill in the Blanks",
       count: cfg.fillInTheBlanks ?? 0,
@@ -413,6 +440,7 @@ Each item is a complete sentence with "______" (six underscores) marking the bla
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.fillInTheBlanks ?? 0}`],
     },
     {
+      configId: "matchTheFollowing",
       type: "match_the_following",
       title: "Match the Following",
       count: cfg.matchTheFollowing ?? 0,
@@ -429,6 +457,7 @@ Each item has Column A (4-5 terms) and Column B (4-5 matches, shuffled). Terms a
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.matchTheFollowing ?? 0}`],
     },
     {
+      configId: "veryShort",
       type: "very_short",
       title: "Very Short Answer Questions",
       count: cfg.veryShort ?? 0,
@@ -439,6 +468,7 @@ Single-line answer items — definitions, one-word answers, units, formula recal
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.veryShort ?? 0}`],
     },
     {
+      configId: "longAnswer",
       type: "long_answer",
       title: "Long Answer / Numerical Questions",
       count: cfg.longAnswer ?? 0,
@@ -454,9 +484,10 @@ Multi-step problems requiring derivation, proof, or numerical computation. Each 
   ];
 }
 
-function class10Maths(chapterName: string, cfg: WorksheetConfigValues): string {
+function class10Maths(chapterName: string, cfg: WorksheetConfigValues, sectionOrder?: string[]): string {
   const fragments: SectionFragment[] = [
     {
+      configId: "sectionA",
       type: "short_answer",
       title: "Short Answer Questions",
       count: cfg.sectionA ?? 0,
@@ -468,6 +499,7 @@ ${SECTION_A_QUALITY_RULES}`,
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.sectionA}`],
     },
     {
+      configId: "assertionReason",
       type: "assertion_reason",
       title: "Assertion and Reason",
       count: cfg.assertionReason ?? 0,
@@ -480,6 +512,7 @@ ${ASSERTION_REASON_QUALITY_RULES}`,
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.assertionReason}`],
     },
     {
+      configId: "caseStudy",
       type: "case_study",
       title: "Case Study",
       count: cfg.caseStudy ?? 0,
@@ -508,7 +541,7 @@ ${SVG_MATH_PATTERNS}`,
     ...legacyMixinFragments(cfg),
   ];
 
-  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments);
+  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments, sectionOrder);
 
   return `You are an expert CBSE Class 10 Mathematics worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
 
@@ -540,9 +573,10 @@ ${schemaText}
 }`;
 }
 
-function class10Science(chapterName: string, cfg: WorksheetConfigValues): string {
+function class10Science(chapterName: string, cfg: WorksheetConfigValues, sectionOrder?: string[]): string {
   const fragments: SectionFragment[] = [
     {
+      configId: "sectionA",
       type: "short_answer",
       title: "Short Answer Questions",
       count: cfg.sectionA ?? 0,
@@ -554,6 +588,7 @@ ${SECTION_A_QUALITY_RULES}`,
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.sectionA}`],
     },
     {
+      configId: "assertionReason",
       type: "assertion_reason",
       title: "Assertion and Reason",
       count: cfg.assertionReason ?? 0,
@@ -566,6 +601,7 @@ ${ASSERTION_REASON_QUALITY_RULES}`,
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.assertionReason}`],
     },
     {
+      configId: "caseStudy",
       type: "case_study",
       title: "Case Study",
       count: cfg.caseStudy ?? 0,
@@ -597,7 +633,7 @@ Science-specific guidance (when an image IS warranted):
     ...legacyMixinFragments(cfg),
   ];
 
-  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments);
+  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments, sectionOrder);
 
   return `You are an expert CBSE Class 10 Science worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
 
@@ -630,9 +666,10 @@ ${schemaText}
 }`;
 }
 
-function class10SocialScience(chapterName: string, cfg: WorksheetConfigValues): string {
+function class10SocialScience(chapterName: string, cfg: WorksheetConfigValues, sectionOrder?: string[]): string {
   const fragments: SectionFragment[] = [
     {
+      configId: "sectionA",
       type: "short_answer",
       title: "Short Answer Questions",
       count: cfg.sectionA ?? 0,
@@ -644,6 +681,7 @@ ${SECTION_A_QUALITY_RULES}`,
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.sectionA}`],
     },
     {
+      configId: "assertionReason",
       type: "assertion_reason",
       title: "Assertion and Reason",
       count: cfg.assertionReason ?? 0,
@@ -656,6 +694,7 @@ ${ASSERTION_REASON_QUALITY_RULES}`,
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.assertionReason}`],
     },
     {
+      configId: "caseStudy",
       type: "case_study",
       title: "Source-Based Questions",
       count: cfg.caseStudy ?? 0,
@@ -688,7 +727,7 @@ Social-Science specific guidance (when an image IS warranted — usually it isn'
     ...legacyMixinFragments(cfg),
   ];
 
-  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments);
+  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments, sectionOrder);
 
   return `You are an expert CBSE Class 10 Social Science worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
 
@@ -720,9 +759,10 @@ ${schemaText}
 }`;
 }
 
-function class10English(chapterName: string, cfg: WorksheetConfigValues): string {
+function class10English(chapterName: string, cfg: WorksheetConfigValues, sectionOrder?: string[]): string {
   const fragments: SectionFragment[] = [
     {
+      configId: "sectionA",
       type: "short_answer",
       title: "Short Answer / Reading Questions",
       count: cfg.sectionA ?? 0,
@@ -734,6 +774,7 @@ ${SECTION_A_QUALITY_RULES}`,
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.sectionA}`],
     },
     {
+      configId: "assertionReason",
       type: "short_answer",
       title: "Grammar",
       count: cfg.assertionReason ?? 0,
@@ -749,6 +790,7 @@ ${GRAMMAR_QUALITY_RULES}`,
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.assertionReason}`],
     },
     {
+      configId: "caseStudy",
       type: "case_study",
       title: "Literature Extract",
       count: cfg.caseStudy ?? 0,
@@ -772,7 +814,7 @@ ${CASE_STUDY_QUALITY_RULES}`,
     ...legacyMixinFragments(cfg),
   ];
 
-  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments);
+  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments, sectionOrder);
 
   return `You are an expert CBSE Class 10 English (Language and Literature) worksheet creator. Generate a chapter-wise practice worksheet aligned to the NCERT textbook pages provided.
 
@@ -804,9 +846,10 @@ ${schemaText}
 }`;
 }
 
-function class10Hindi(chapterName: string, cfg: WorksheetConfigValues): string {
+function class10Hindi(chapterName: string, cfg: WorksheetConfigValues, sectionOrder?: string[]): string {
   const fragments: SectionFragment[] = [
     {
+      configId: "sectionA",
       type: "short_answer",
       title: "लघु उत्तरीय प्रश्न",
       count: cfg.sectionA ?? 0,
@@ -818,6 +861,7 @@ ${SECTION_A_QUALITY_RULES}`,
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.sectionA}`],
     },
     {
+      configId: "assertionReason",
       type: "short_answer",
       title: "व्याकरण",
       count: cfg.assertionReason ?? 0,
@@ -829,6 +873,7 @@ ${VYAKARAN_QUALITY_RULES}`,
       verify: (i) => [`- sections[${i}].questions.length === ${cfg.assertionReason}`],
     },
     {
+      configId: "caseStudy",
       type: "case_study",
       title: "पाठ्यांश आधारित प्रश्न",
       count: cfg.caseStudy ?? 0,
@@ -852,7 +897,7 @@ ${CASE_STUDY_QUALITY_RULES}`,
     ...legacyMixinFragments(cfg),
   ];
 
-  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments);
+  const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(fragments, sectionOrder);
 
   return `आप एक विशेषज्ञ CBSE कक्षा 10 हिंदी वर्कशीट निर्माता हैं। दिए गए NCERT पाठ्यपुस्तक पृष्ठों के आधार पर अध्यायवार अभ्यास वर्कशीट तैयार करें।
 
@@ -890,9 +935,10 @@ ${schemaText}
 // fragments as the Class 10 prompts.
 // ============================================================
 
-function buildGenericPrompt(cfg: WorksheetConfigValues): string {
+function buildGenericPrompt(cfg: WorksheetConfigValues, sectionOrder?: string[]): string {
   const { totalSections, countLines, sectionsText, schemaText, verificationText } = assembleSections(
     legacyMixinFragments(cfg),
+    sectionOrder,
   );
 
   return `You are an expert educational worksheet creator for Indian schools (CBSE/ICSE curriculum). Generate high-quality worksheet questions from the textbook pages provided.
@@ -928,17 +974,17 @@ ${schemaText}
 // Dispatch: pick Class 10 subject-specific prompt or generic fallback
 // ============================================================
 
-function buildSystemPrompt(ctx: GenerationContext, cfg: WorksheetConfigValues): string {
+function buildSystemPrompt(ctx: GenerationContext, cfg: WorksheetConfigValues, sectionOrder?: string[]): string {
   if (ctx.gradeNumber === 10) {
     switch (ctx.subjectSlug) {
-      case "mathematics":     return class10Maths(ctx.chapterName, cfg);
-      case "science":         return class10Science(ctx.chapterName, cfg);
-      case "social_studies":  return class10SocialScience(ctx.chapterName, cfg);
-      case "english":         return class10English(ctx.chapterName, cfg);
-      case "hindi":           return class10Hindi(ctx.chapterName, cfg);
+      case "mathematics":     return class10Maths(ctx.chapterName, cfg, sectionOrder);
+      case "science":         return class10Science(ctx.chapterName, cfg, sectionOrder);
+      case "social_studies":  return class10SocialScience(ctx.chapterName, cfg, sectionOrder);
+      case "english":         return class10English(ctx.chapterName, cfg, sectionOrder);
+      case "hindi":           return class10Hindi(ctx.chapterName, cfg, sectionOrder);
     }
   }
-  return buildGenericPrompt(cfg);
+  return buildGenericPrompt(cfg, sectionOrder);
 }
 
 // ============================================================
@@ -949,6 +995,7 @@ export async function generateQuestions(
   imageBase64s: string[],
   context: GenerationContext,
   config: WorksheetConfigValues,
+  sectionOrder?: string[],
 ): Promise<WorksheetQuestions> {
   const contentParts = [];
 
@@ -977,7 +1024,7 @@ export async function generateQuestions(
   );
 
   const response = await callLLM([
-    { role: "system", content: buildSystemPrompt(context, config) },
+    { role: "system", content: buildSystemPrompt(context, config, sectionOrder) },
     { role: "user", content: contentParts },
   ]);
 

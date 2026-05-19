@@ -10,11 +10,12 @@ import type { Grade, Subject, Chapter, School, GradeBand, WorksheetConfigValues 
 export const processWorksheet = inngest.createFunction(
   { id: "process-worksheet", triggers: [{ event: "worksheet/generate.requested" }] },
   async ({ event, step }) => {
-    const { worksheetId, chapterId, schoolId, config: incomingConfig } = event.data as {
+    const { worksheetId, chapterId, schoolId, config: incomingConfig, sectionOrder } = event.data as {
       worksheetId: string;
       chapterId: string;
       schoolId: string;
       config?: WorksheetConfigValues;
+      sectionOrder?: string[];
     };
 
     // Step 1: Mark as processing and load all metadata
@@ -98,6 +99,7 @@ export const processWorksheet = inngest.createFunction(
           chapterName: chapter.name as string,
         },
         config,
+        sectionOrder,
       );
     });
 

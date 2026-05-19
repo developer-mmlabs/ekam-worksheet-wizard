@@ -268,6 +268,7 @@ export interface GenerateRequest {
   chapterId: string;
   schoolId: string;
   config?: WorksheetConfigValues;
+  sectionOrder?: string[]; // Control ids in the order the user wants the sections to appear
 }
 
 export interface GenerateResponse {

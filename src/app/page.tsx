@@ -675,13 +675,17 @@ export default function GeneratePage() {
 
   useEffect(() => { loadChapterStatus(); }, [loadChapterStatus]);
 
-  function pollForCompletion(worksheetId: string) {
+  function pollForCompletion(worksheetId: string, fast = false) {
+    // fast=true for edits/re-renders (poll every 3s), false for full generation (poll every 10s)
+    const interval = fast ? 3_000 : 10_000;
+    const timeout = fast ? 120_000 : 900_000;
+
     pollingRef.current = setInterval(async () => {
       try {
         const res = await fetch(`/api/generate/status?id=${worksheetId}`);
         if (!res.ok) return;
         const data = await res.json();
-        if (data.status === "processing") setProgress("AI is generating your worksheet...");
+        if (data.status === "processing") setProgress(fast ? "Re-rendering PDF..." : "AI is generating your worksheet...");
         if (data.status === "completed") {
           stopPolling(); setPdfUrl(data.pdfUrl); setActiveSetNumber(data.setNumber);
           setIsFinalized(data.isFinalized); setProgress(""); setGenerating(false); loadChapterStatus();
@@ -690,10 +694,10 @@ export default function GeneratePage() {
           stopPolling(); setError(data.errorMessage || "Generation failed"); setGenerating(false);
         }
       } catch { /* keep polling */ }
-    }, 30_000);
+    }, interval);
     timeoutRef.current = setTimeout(() => {
       stopPolling(); setError("Taking too long. Check History page."); setGenerating(false);
-    }, 900_000);
+    }, timeout);
   }
 
   useEffect(() => {
@@ -765,7 +769,7 @@ export default function GeneratePage() {
 
   function handleModalSaved() {
     setShowEditModal(false); setShowChatPanel(false); setEditQuestionsJson(null);
-    if (activeWorksheetId) { setGenerating(true); setProgress("Re-rendering PDF..."); pollForCompletion(activeWorksheetId); }
+    if (activeWorksheetId) { setGenerating(true); setProgress("Re-rendering PDF..."); pollForCompletion(activeWorksheetId, true); }
   }
 
   const allFinalized = chapterStatus?.nextSetNumber === null && (chapterStatus?.worksheets.length ?? 0) > 0;

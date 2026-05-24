@@ -484,12 +484,38 @@ interface ChatMessage {
   text: string;
 }
 
+/** Build a human-readable summary of the worksheet for the chat context panel. */
+function buildWorksheetSummary(q: WorksheetQuestions): string {
+  const lines: string[] = [
+    `${q.metadata.grade} / ${q.metadata.subject} / ${q.metadata.chapter}`,
+    `${q.metadata.totalQuestions} total questions across ${q.sections.length} sections:`,
+  ];
+  for (const s of q.sections) {
+    if (s.caseStudies?.length) {
+      lines.push(`  Section ${s.id}: ${s.title} (${s.caseStudies.length} case studies)`);
+      s.caseStudies.forEach((cs) => {
+        const preview = cs.stimulus.slice(0, 80).replace(/\n/g, " ");
+        lines.push(`    CS${cs.number}: "${preview}..." (${cs.questions.length} sub-Qs)`);
+      });
+    } else if (s.questions?.length) {
+      lines.push(`  Section ${s.id}: ${s.title} (${s.questions.length} questions)`);
+      s.questions.forEach((q) => {
+        const preview = (q.assertion ? `A: ${q.assertion}` : q.text).slice(0, 80).replace(/\n/g, " ");
+        lines.push(`    Q${q.number}: ${preview}${preview.length >= 80 ? "..." : ""}`);
+      });
+    }
+  }
+  return lines.join("\n");
+}
+
 function ChatEditPanel({
   worksheetId,
+  questionsJson,
   onClose,
   onUpdated,
 }: {
   worksheetId: string;
+  questionsJson: WorksheetQuestions;
   onClose: () => void;
   onUpdated: () => void;
 }) {
@@ -497,6 +523,7 @@ function ChatEditPanel({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const worksheetSummary = useMemo(() => buildWorksheetSummary(questionsJson), [questionsJson]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -506,7 +533,9 @@ function ChatEditPanel({
     const text = input.trim();
     if (!text || sending) return;
 
-    setMessages((prev) => [...prev, { role: "user", text }]);
+    const newUserMsg: ChatMessage = { role: "user", text };
+    const updatedMessages = [...messages, newUserMsg];
+    setMessages(updatedMessages);
     setInput("");
     setSending(true);
 
@@ -514,7 +543,11 @@ function ChatEditPanel({
       const res = await fetch("/api/generate/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ worksheetId, message: text }),
+        body: JSON.stringify({
+          worksheetId,
+          message: text,
+          history: messages, // send all previous turns (before the new one)
+        }),
       });
 
       if (!res.ok) {
@@ -527,11 +560,19 @@ function ChatEditPanel({
       }
 
       const data = await res.json();
+      const replyText = data.hasEdits
+        ? data.reply + "\n\nPDF is being re-rendered..."
+        : data.reply;
+
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", text: data.reply + "\n\nPDF is being re-rendered..." },
+        { role: "assistant", text: replyText },
       ]);
-      onUpdated();
+
+      // Only trigger PDF polling if actual edits were made
+      if (data.hasEdits) {
+        onUpdated();
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -544,12 +585,12 @@ function ChatEditPanel({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center pt-8 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 mb-8 flex flex-col" style={{ height: "70vh" }}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 mb-8 flex flex-col" style={{ height: "80vh" }}>
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Edit with AI</h2>
             <p className="text-xs text-gray-500 mt-1">
-              Tell the AI what to change. e.g. &quot;Replace Q5 with a harder question&quot; or &quot;Make the case study about sports instead&quot;
+              Chat with the AI to refine your worksheet. It sees the full question list.
             </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl p-1">
@@ -557,15 +598,26 @@ function ChatEditPanel({
           </button>
         </div>
 
+        {/* Worksheet context — collapsible summary */}
+        <details className="border-b border-gray-200">
+          <summary className="px-4 py-2 text-xs font-medium text-gray-500 cursor-pointer hover:bg-gray-50 select-none">
+            Worksheet contents ({questionsJson.metadata.totalQuestions} questions, {questionsJson.sections.length} sections) — click to expand
+          </summary>
+          <pre className="px-4 py-2 text-xs text-gray-600 bg-gray-50 max-h-48 overflow-y-auto whitespace-pre-wrap font-mono">
+            {worksheetSummary}
+          </pre>
+        </details>
+
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {messages.length === 0 && (
-            <div className="text-center text-gray-400 text-sm mt-8">
-              <p>Describe the changes you want.</p>
-              <div className="mt-4 space-y-2 text-xs text-left max-w-xs mx-auto">
+            <div className="text-center text-gray-400 text-sm mt-6">
+              <p className="mb-3">Describe the changes you want. The AI has the full worksheet context.</p>
+              <div className="space-y-2 text-xs text-left max-w-sm mx-auto">
                 <p className="bg-gray-50 rounded-lg px-3 py-2">&quot;Replace Q3 in Section A with a question about quadratic equations&quot;</p>
                 <p className="bg-gray-50 rounded-lg px-3 py-2">&quot;Q7 is too easy, make it more challenging&quot;</p>
                 <p className="bg-gray-50 rounded-lg px-3 py-2">&quot;Fix the options in Q2 of Section B — option (c) is obviously wrong&quot;</p>
                 <p className="bg-gray-50 rounded-lg px-3 py-2">&quot;Change the case study topic from water tanks to a cricket stadium&quot;</p>
+                <p className="bg-gray-50 rounded-lg px-3 py-2">&quot;Which questions are about trigonometry? Replace two of them with geometry questions&quot;</p>
               </div>
             </div>
           )}
@@ -1141,7 +1193,17 @@ export default function GeneratePage() {
                   {!isFinalized && (
                     <>
                       <button
-                        onClick={() => setShowChatPanel(true)}
+                        onClick={async () => {
+                          // Load latest questions for chat context
+                          const res = await fetch(`/api/generate/status?id=${activeWorksheetId}&include=questions`);
+                          if (res.ok) {
+                            const data = await res.json();
+                            if (data.questionsJson) {
+                              setEditQuestionsJson(data.questionsJson);
+                              setShowChatPanel(true);
+                            }
+                          }
+                        }}
                         className="inline-flex items-center gap-1.5 bg-purple-100 text-purple-700 font-medium py-2 px-3 rounded-lg hover:bg-purple-200 transition-colors text-sm"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1208,12 +1270,17 @@ export default function GeneratePage() {
       )}
 
       {/* Chat Edit Panel */}
-      {showChatPanel && activeWorksheetId && (
+      {showChatPanel && activeWorksheetId && editQuestionsJson && (
         <ChatEditPanel
           worksheetId={activeWorksheetId}
-          onClose={() => setShowChatPanel(false)}
+          questionsJson={editQuestionsJson}
+          onClose={() => {
+            setShowChatPanel(false);
+            setEditQuestionsJson(null);
+          }}
           onUpdated={() => {
             setShowChatPanel(false);
+            setEditQuestionsJson(null);
             setGenerating(true);
             setProgress("Re-rendering PDF with AI changes...");
             pollForCompletion(activeWorksheetId);

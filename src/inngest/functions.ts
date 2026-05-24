@@ -56,30 +56,8 @@ export const processWorksheet = inngest.createFunction(
       return { chapter, school, materials };
     });
 
-    // Step 2: Download images and convert to base64
-    const imageBase64s = await step.run("download-images", async () => {
-      const images: string[] = [];
-      for (const material of metadata.materials) {
-        try {
-          const response = await fetch(material.file_url as string);
-          if (response.ok) {
-            const buffer = await response.arrayBuffer();
-            const base64 = Buffer.from(buffer).toString("base64");
-            images.push(base64);
-          }
-        } catch (e) {
-          console.warn(`Failed to fetch image: ${material.file_url}`, e);
-        }
-      }
-
-      if (images.length === 0) {
-        throw new Error("Could not load any source material images.");
-      }
-
-      return images;
-    });
-
-    // Step 3: Generate questions via AI (the long-running part)
+    // Step 2: Download images + generate questions in a single step
+    // (combined to avoid serializing large base64 image data as step output)
     const { chapter, school } = metadata;
     const subjectData = chapter.subject as unknown as Subject & { grade: Grade };
     const gradeData = subjectData.grade;
@@ -89,7 +67,26 @@ export const processWorksheet = inngest.createFunction(
       ...incomingConfig,
     };
 
-    const questions = await step.run("generate-questions", async () => {
+    const questions = await step.run("download-and-generate", async () => {
+      // Download all source material images
+      const imageBase64s: string[] = [];
+      for (const material of metadata.materials) {
+        try {
+          const response = await fetch(material.file_url as string);
+          if (response.ok) {
+            const buffer = await response.arrayBuffer();
+            imageBase64s.push(Buffer.from(buffer).toString("base64"));
+          }
+        } catch (e) {
+          console.warn(`Failed to fetch image: ${material.file_url}`, e);
+        }
+      }
+
+      if (imageBase64s.length === 0) {
+        throw new Error("Could not load any source material images.");
+      }
+
+      // Generate questions via AI
       return await generateQuestions(
         imageBase64s,
         {
@@ -151,8 +148,9 @@ export const processWorksheet = inngest.createFunction(
       }
     }
 
-    // Step 4: Generate PDF
-    const pdfBuffer = await step.run("generate-pdf", async () => {
+    // Step 4: Generate PDF, upload, and mark completed
+    // (combined to avoid serializing large PDF buffer as step output)
+    await step.run("generate-pdf-and-upload", async () => {
       const theme = getTheme(gradeData.band as GradeBand, subjectData.slug, {
         primary: (school as School).primary_color,
         secondary: (school as School).secondary_color,
@@ -174,18 +172,6 @@ export const processWorksheet = inngest.createFunction(
         worksheetNumber,
         theme,
       });
-
-      // Return as base64 string so it can be serialized between steps
-      return {
-        base64: Buffer.from(buffer).toString("base64"),
-        worksheetNumber,
-      };
-    });
-
-    // Step 5: Upload PDF and mark completed
-    await step.run("upload-and-complete", async () => {
-      const buffer = Buffer.from(pdfBuffer.base64, "base64");
-      const worksheetNumber = pdfBuffer.worksheetNumber;
 
       const gradeName = gradeData.name.replace(/\s+/g, "-");
       const subjectSlug = subjectData.slug;
@@ -257,7 +243,7 @@ export const regeneratePDF = inngest.createFunction(
     const gradeData = subjectData.grade;
     const questions = worksheet.questions_json as unknown as WorksheetQuestions;
 
-    const pdfBuffer = await step.run("generate-pdf", async () => {
+    await step.run("generate-pdf-and-upload", async () => {
       const theme = getTheme(gradeData.band as GradeBand, subjectData.slug, {
         primary: (school as School).primary_color,
         secondary: (school as School).secondary_color,
@@ -279,16 +265,6 @@ export const regeneratePDF = inngest.createFunction(
         worksheetNumber,
         theme,
       });
-
-      return {
-        base64: Buffer.from(buffer).toString("base64"),
-        worksheetNumber,
-      };
-    });
-
-    await step.run("upload-and-complete", async () => {
-      const buffer = Buffer.from(pdfBuffer.base64, "base64");
-      const worksheetNumber = pdfBuffer.worksheetNumber;
 
       const gradeName = gradeData.name.replace(/\s+/g, "-");
       const subjectSlug = subjectData.slug;

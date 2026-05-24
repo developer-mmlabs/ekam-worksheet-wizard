@@ -67,28 +67,16 @@ export const processWorksheet = inngest.createFunction(
       ...incomingConfig,
     };
 
-    const questions = await step.run("download-and-generate", async () => {
-      // Download all source material images
-      const imageBase64s: string[] = [];
-      for (const material of metadata.materials) {
-        try {
-          const response = await fetch(material.file_url as string);
-          if (response.ok) {
-            const buffer = await response.arrayBuffer();
-            imageBase64s.push(Buffer.from(buffer).toString("base64"));
-          }
-        } catch (e) {
-          console.warn(`Failed to fetch image: ${material.file_url}`, e);
-        }
+    const questions = await step.run("generate-questions", async () => {
+      // Pass public URLs directly to the LLM — no need to download images
+      const imageUrls = metadata.materials.map((m) => m.file_url as string);
+
+      if (imageUrls.length === 0) {
+        throw new Error("No source material images found.");
       }
 
-      if (imageBase64s.length === 0) {
-        throw new Error("Could not load any source material images.");
-      }
-
-      // Generate questions via AI
       return await generateQuestions(
-        imageBase64s,
+        imageUrls,
         {
           gradeNumber: gradeData.number,
           gradeName: gradeData.name,

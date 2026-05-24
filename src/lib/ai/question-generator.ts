@@ -1,4 +1,4 @@
-import { callLLM, createImageContent, createTextContent } from "@/lib/openrouter";
+import { callLLM, createImageContent, createImageContentFromUrl, createTextContent } from "@/lib/openrouter";
 import { WorksheetQuestions, WorksheetConfigValues } from "@/types";
 
 export interface GenerationContext {
@@ -1009,7 +1009,7 @@ function buildSystemPrompt(ctx: GenerationContext, cfg: WorksheetConfigValues, s
 // ============================================================
 
 export async function generateQuestions(
-  imageBase64s: string[],
+  imageUrls: string[],
   context: GenerationContext,
   config: WorksheetConfigValues,
   sectionOrder?: string[],
@@ -1023,16 +1023,21 @@ export async function generateQuestions(
     )
   );
 
-  const maxImages = Math.min(imageBase64s.length, 50);
+  const maxImages = Math.min(imageUrls.length, 50);
   for (let i = 0; i < maxImages; i++) {
-    contentParts.push(createImageContent(imageBase64s[i]));
-    contentParts.push(createTextContent(`[Page ${i + 1} of ${imageBase64s.length}]`));
+    // Support both public URLs (preferred) and legacy base64 data
+    if (imageUrls[i].startsWith("http")) {
+      contentParts.push(createImageContentFromUrl(imageUrls[i]));
+    } else {
+      contentParts.push(createImageContent(imageUrls[i]));
+    }
+    contentParts.push(createTextContent(`[Page ${i + 1} of ${imageUrls.length}]`));
   }
 
-  if (imageBase64s.length > maxImages) {
+  if (imageUrls.length > maxImages) {
     contentParts.push(
       createTextContent(
-        `Note: ${imageBase64s.length - maxImages} additional pages were not included due to size limits. Generate questions covering all visible content.`
+        `Note: ${imageUrls.length - maxImages} additional pages were not included due to size limits. Generate questions covering all visible content.`
       )
     );
   }

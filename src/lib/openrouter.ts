@@ -63,6 +63,13 @@ export function createImageContent(base64Data: string, mimeType: string = "image
   };
 }
 
+export function createImageContentFromUrl(url: string): ImagePart {
+  return {
+    type: "image_url",
+    image_url: { url },
+  };
+}
+
 export function createTextContent(text: string): TextPart {
   return {
     type: "text",

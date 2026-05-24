@@ -144,12 +144,13 @@ export const processWorksheet = inngest.createFunction(
         secondary: (school as School).secondary_color,
       });
 
-      const { count } = await supabaseAdmin
+      // Use the worksheet's set_number (1, 2, or 3) as the display number
+      const { data: wsRow } = await supabaseAdmin
         .from("worksheets")
-        .select("id", { count: "exact", head: true })
-        .eq("chapter_id", chapterId);
-
-      const worksheetNumber = count || 1;
+        .select("set_number")
+        .eq("id", worksheetId)
+        .single();
+      const worksheetNumber = wsRow?.set_number || 1;
 
       const buffer = await generateWorksheetPDF({
         school: school as School,
@@ -237,12 +238,8 @@ export const regeneratePDF = inngest.createFunction(
         secondary: (school as School).secondary_color,
       });
 
-      const { count } = await supabaseAdmin
-        .from("worksheets")
-        .select("id", { count: "exact", head: true })
-        .eq("chapter_id", chapter.id);
-
-      const worksheetNumber = count || 1;
+      // Use set_number from the worksheet row (already loaded in metadata)
+      const worksheetNumber = (worksheet as unknown as { set_number: number }).set_number || 1;
 
       const buffer = await generateWorksheetPDF({
         school: school as School,

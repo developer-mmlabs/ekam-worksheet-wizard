@@ -221,7 +221,6 @@ function QuestionEditModal({
       return next;
     });
 
-    // Track the update
     setUpdates((prev) => {
       const existing = prev.findIndex(
         (u) =>
@@ -239,6 +238,64 @@ function QuestionEditModal({
         ...prev,
         { sectionIndex: sectionIdx, questionIndex: questionIdx, caseStudyIndex: caseStudyIdx, changes },
       ];
+    });
+  }
+
+  function updateOption(
+    sectionIdx: number,
+    questionIdx: number,
+    optionIdx: number,
+    value: string,
+    caseStudyIdx?: number,
+  ) {
+    const key = `${sectionIdx}-${caseStudyIdx ?? "q"}-${questionIdx}-opt${optionIdx}`;
+    markEdited(key);
+
+    setSections((prev) => {
+      const next = JSON.parse(JSON.stringify(prev)) as QuestionSection[];
+      let q: Question;
+      if (caseStudyIdx !== undefined) {
+        q = next[sectionIdx].caseStudies![caseStudyIdx].questions[questionIdx];
+      } else {
+        q = next[sectionIdx].questions![questionIdx];
+      }
+      if (q.options?.[optionIdx]) {
+        q.options[optionIdx].text = value;
+      }
+      return next;
+    });
+
+    // Build full updated options array for the update
+    setSections((cur) => {
+      const section = cur[sectionIdx];
+      let q: Question;
+      if (caseStudyIdx !== undefined) {
+        q = section.caseStudies![caseStudyIdx].questions[questionIdx];
+      } else {
+        q = section.questions![questionIdx];
+      }
+      const updatedOptions = q.options ? [...q.options] : [];
+
+      setUpdates((prev) => {
+        const existing = prev.findIndex(
+          (u) =>
+            u.sectionIndex === sectionIdx &&
+            u.questionIndex === questionIdx &&
+            u.caseStudyIndex === caseStudyIdx,
+        );
+        const changes: Partial<Question> = { options: updatedOptions };
+        if (existing >= 0) {
+          const next = [...prev];
+          next[existing] = { ...next[existing], changes: { ...next[existing].changes, ...changes } };
+          return next;
+        }
+        return [
+          ...prev,
+          { sectionIndex: sectionIdx, questionIndex: questionIdx, caseStudyIndex: caseStudyIdx, changes },
+        ];
+      });
+
+      return cur; // don't modify sections again, already done above
     });
   }
 
@@ -328,8 +385,14 @@ function QuestionEditModal({
                         <div className="mt-2 space-y-1">
                           {q.options.map((opt, oIdx) => (
                             <div key={oIdx} className="flex items-center gap-2 text-sm">
-                              <span className="text-gray-400 text-xs">({opt.label})</span>
-                              <span className="text-gray-700">{opt.text}</span>
+                              <span className="text-gray-400 text-xs shrink-0">({opt.label})</span>
+                              <input
+                                type="text"
+                                value={opt.text}
+                                disabled={editCount >= maxEdits && !editedCells.has(`${sIdx}-q-${qIdx}-opt${oIdx}`)}
+                                onChange={(e) => updateOption(sIdx, qIdx, oIdx, e.target.value)}
+                                className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+                              />
                             </div>
                           ))}
                         </div>
@@ -365,8 +428,14 @@ function QuestionEditModal({
                             <div className="mt-1 space-y-1">
                               {q.options.map((opt, oIdx) => (
                                 <div key={oIdx} className="flex items-center gap-2 text-sm">
-                                  <span className="text-gray-400 text-xs">({opt.label})</span>
-                                  <span className="text-gray-700">{opt.text}</span>
+                                  <span className="text-gray-400 text-xs shrink-0">({opt.label})</span>
+                                  <input
+                                    type="text"
+                                    value={opt.text}
+                                    disabled={editCount >= maxEdits && !editedCells.has(`${sIdx}-${csIdx}-${qIdx}-opt${oIdx}`)}
+                                    onChange={(e) => updateOption(sIdx, qIdx, oIdx, e.target.value, csIdx)}
+                                    className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+                                  />
                                 </div>
                               ))}
                             </div>
@@ -407,6 +476,152 @@ function QuestionEditModal({
 }
 
 // ============================================================
+// Chat Edit Panel
+// ============================================================
+
+interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+}
+
+function ChatEditPanel({
+  worksheetId,
+  onClose,
+  onUpdated,
+}: {
+  worksheetId: string;
+  onClose: () => void;
+  onUpdated: () => void;
+}) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  async function handleSend() {
+    const text = input.trim();
+    if (!text || sending) return;
+
+    setMessages((prev) => [...prev, { role: "user", text }]);
+    setInput("");
+    setSending(true);
+
+    try {
+      const res = await fetch("/api/generate/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ worksheetId, message: text }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", text: `Error: ${err.error || "Failed to process request"}` },
+        ]);
+        return;
+      }
+
+      const data = await res.json();
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: data.reply + "\n\nPDF is being re-rendered..." },
+      ]);
+      onUpdated();
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: "Error: Network error. Please try again." },
+      ]);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center pt-8 overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 mb-8 flex flex-col" style={{ height: "70vh" }}>
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Edit with AI</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Tell the AI what to change. e.g. &quot;Replace Q5 with a harder question&quot; or &quot;Make the case study about sports instead&quot;
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl p-1">
+            &times;
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {messages.length === 0 && (
+            <div className="text-center text-gray-400 text-sm mt-8">
+              <p>Describe the changes you want.</p>
+              <div className="mt-4 space-y-2 text-xs text-left max-w-xs mx-auto">
+                <p className="bg-gray-50 rounded-lg px-3 py-2">&quot;Replace Q3 in Section A with a question about quadratic equations&quot;</p>
+                <p className="bg-gray-50 rounded-lg px-3 py-2">&quot;Q7 is too easy, make it more challenging&quot;</p>
+                <p className="bg-gray-50 rounded-lg px-3 py-2">&quot;Fix the options in Q2 of Section B — option (c) is obviously wrong&quot;</p>
+                <p className="bg-gray-50 rounded-lg px-3 py-2">&quot;Change the case study topic from water tanks to a cricket stadium&quot;</p>
+              </div>
+            </div>
+          )}
+          {messages.map((msg, i) => (
+            <div
+              key={i}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
+                  msg.role === "user"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-800"
+                }`}
+              >
+                {msg.text}
+              </div>
+            </div>
+          ))}
+          {sending && (
+            <div className="flex justify-start">
+              <div className="bg-gray-100 rounded-lg px-3 py-2 text-sm text-gray-500 flex items-center gap-2">
+                <div className="animate-spin h-3 w-3 border-2 border-gray-400 border-t-transparent rounded-full" />
+                Thinking...
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className="p-4 border-t border-gray-200">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+              placeholder="Describe the changes you want..."
+              disabled={sending}
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || sending}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // Main Page
 // ============================================================
 
@@ -438,6 +653,7 @@ export default function GeneratePage() {
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
   const [editQuestionsJson, setEditQuestionsJson] = useState<WorksheetQuestions | null>(null);
+  const [showChatPanel, setShowChatPanel] = useState(false);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -925,13 +1141,22 @@ export default function GeneratePage() {
                   {!isFinalized && (
                     <>
                       <button
+                        onClick={() => setShowChatPanel(true)}
+                        className="inline-flex items-center gap-1.5 bg-purple-100 text-purple-700 font-medium py-2 px-3 rounded-lg hover:bg-purple-200 transition-colors text-sm"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                        Edit with AI
+                      </button>
+                      <button
                         onClick={handleEditQuestions}
                         className="inline-flex items-center gap-1.5 bg-gray-100 text-gray-700 font-medium py-2 px-3 rounded-lg hover:bg-gray-200 transition-colors text-sm"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
-                        Edit Questions
+                        Manual Edit
                       </button>
                       <button
                         onClick={handleFinalize}
@@ -979,6 +1204,20 @@ export default function GeneratePage() {
             setEditQuestionsJson(null);
           }}
           onSaved={handleEditSaved}
+        />
+      )}
+
+      {/* Chat Edit Panel */}
+      {showChatPanel && activeWorksheetId && (
+        <ChatEditPanel
+          worksheetId={activeWorksheetId}
+          onClose={() => setShowChatPanel(false)}
+          onUpdated={() => {
+            setShowChatPanel(false);
+            setGenerating(true);
+            setProgress("Re-rendering PDF with AI changes...");
+            pollForCompletion(activeWorksheetId);
+          }}
         />
       )}
     </div>

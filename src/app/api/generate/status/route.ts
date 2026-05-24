@@ -12,12 +12,24 @@ export async function GET(req: NextRequest) {
 
   const { data: worksheet, error } = await supabaseAdmin
     .from("worksheets")
-    .select("id, status, pdf_url, error_message, questions_json, page_count, set_number, is_finalized")
+    .select("id, status, pdf_url, error_message, questions_json, page_count, set_number, is_finalized, created_at")
     .eq("id", worksheetId)
     .single();
 
   if (error || !worksheet) {
     return NextResponse.json({ error: "Worksheet not found" }, { status: 404 });
+  }
+
+  // Compute queue position for pending/processing worksheets
+  let queuePosition: number | null = null;
+  if (worksheet.status === "pending" || worksheet.status === "processing") {
+    const { count } = await supabaseAdmin
+      .from("worksheets")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["pending", "processing"])
+      .lt("created_at", worksheet.created_at);
+
+    queuePosition = (count ?? 0) + 1;
   }
 
   const response: WorksheetStatusResponse = {
@@ -29,6 +41,7 @@ export async function GET(req: NextRequest) {
     pageCount: worksheet.page_count || null,
     setNumber: worksheet.set_number,
     isFinalized: worksheet.is_finalized,
+    queuePosition,
     ...(includeQuestions ? { questionsJson: worksheet.questions_json } : {}),
   };
 

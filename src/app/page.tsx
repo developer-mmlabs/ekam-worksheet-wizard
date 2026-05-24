@@ -597,6 +597,7 @@ export default function GeneratePage() {
   const [activeSetNumber, setActiveSetNumber] = useState<number | null>(null);
   const [isFinalized, setIsFinalized] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [queuePosition, setQueuePosition] = useState<number | null>(null);
 
   const [chapterStatus, setChapterStatus] = useState<ChapterStatusResponse | null>(null);
   const [schoolId, setSchoolId] = useState<string | null>(null);
@@ -685,13 +686,22 @@ export default function GeneratePage() {
         const res = await fetch(`/api/generate/status?id=${worksheetId}`);
         if (!res.ok) return;
         const data = await res.json();
-        if (data.status === "processing") setProgress(fast ? "Re-rendering PDF..." : "AI is generating your worksheet...");
+        if (data.status === "pending") {
+          setQueuePosition(data.queuePosition);
+          setProgress("Waiting in queue...");
+        }
+        if (data.status === "processing") {
+          setQueuePosition(null);
+          setProgress(fast ? "Re-rendering PDF..." : "AI is generating your worksheet...");
+        }
         if (data.status === "completed") {
           stopPolling(); setPdfUrl(data.pdfUrl); setActiveSetNumber(data.setNumber);
-          setIsFinalized(data.isFinalized); setProgress(""); setGenerating(false); loadChapterStatus();
+          setIsFinalized(data.isFinalized); setProgress(""); setQueuePosition(null);
+          setGenerating(false); loadChapterStatus();
         }
         if (data.status === "failed") {
-          stopPolling(); setError(data.errorMessage || "Generation failed"); setGenerating(false);
+          stopPolling(); setError(data.errorMessage || "Generation failed");
+          setQueuePosition(null); setGenerating(false);
         }
       } catch { /* keep polling */ }
     }, interval);
@@ -718,7 +728,7 @@ export default function GeneratePage() {
 
   async function handleGenerate() {
     if (!selectedChapter || !schoolId) return;
-    setGenerating(true); setError(null); setPdfUrl(null); setProgress("Submitting...");
+    setGenerating(true); setError(null); setPdfUrl(null); setQueuePosition(null); setProgress("Submitting...");
     try {
       const response = await fetch("/api/generate", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -914,6 +924,9 @@ export default function GeneratePage() {
             <div className="h-full flex flex-col items-center justify-center text-gray-400">
               <div className="w-10 h-10 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin mb-4" />
               <p className="text-sm">{progress}</p>
+              {queuePosition !== null && queuePosition > 1 && (
+                <p className="text-xs text-gray-300 mt-2">Position in queue: {queuePosition}</p>
+              )}
             </div>
           ) : pdfUrl ? (
             <iframe src={pdfUrl} className="w-full h-full" title="Worksheet Preview" />

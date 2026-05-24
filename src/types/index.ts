@@ -288,6 +288,7 @@ export interface WorksheetStatusResponse {
   pageCount: number | null;
   setNumber: number;
   isFinalized: boolean;
+  queuePosition: number | null; // 1-based position in queue, null when not queued
   questionsJson?: WorksheetQuestions; // Included when ?include=questions
 }
 

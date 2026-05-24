@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { inngest } from "@/inngest/client";
 import { defaultConfigValues, getWorksheetConfigSpec } from "@/lib/worksheet-configs";
-import type { GenerateRequest, WorksheetConfigValues } from "@/types";
+import type { GenerateRequest, WorksheetConfigValues, WorksheetQuestions } from "@/types";
+import { flattenQuestionsForDedup } from "@/types";
 
 export async function POST(req: NextRequest) {
   try {
@@ -50,6 +51,50 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    // Determine set_number: find finalized worksheets and any pending/in-progress drafts
+    const { data: existingWorksheets } = await supabaseAdmin
+      .from("worksheets")
+      .select("id, set_number, is_finalized, status, questions_json")
+      .eq("chapter_id", chapterId)
+      .eq("school_id", schoolId)
+      .order("set_number");
+
+    const finalized = (existingWorksheets ?? []).filter((w) => w.is_finalized);
+    const finalizedSetNumbers = new Set(finalized.map((w) => w.set_number));
+
+    if (finalizedSetNumbers.size >= 3) {
+      return NextResponse.json({
+        success: false,
+        error: "All 3 worksheets for this chapter have been finalized.",
+      }, { status: 400 });
+    }
+
+    // Next set_number = first unfinalized slot (1, 2, or 3)
+    let setNumber = 1;
+    for (let n = 1; n <= 3; n++) {
+      if (!finalizedSetNumbers.has(n)) {
+        setNumber = n;
+        break;
+      }
+    }
+
+    // Delete any existing non-finalized draft for this set_number (regeneration)
+    const existingDraft = (existingWorksheets ?? []).find(
+      (w) => w.set_number === setNumber && !w.is_finalized
+    );
+    if (existingDraft) {
+      await supabaseAdmin.from("worksheets").delete().eq("id", existingDraft.id);
+    }
+
+    // Gather previously used questions from finalized worksheets for dedup
+    const previousQuestions: string[] = [];
+    for (const fw of finalized) {
+      const qj = fw.questions_json as unknown as WorksheetQuestions;
+      if (qj?.sections) {
+        previousQuestions.push(...flattenQuestionsForDedup(qj));
+      }
+    }
+
     const { data: worksheet, error: insertError } = await supabaseAdmin
       .from("worksheets")
       .insert({
@@ -58,6 +103,8 @@ export async function POST(req: NextRequest) {
         status: "pending",
         questions_json: {},
         page_count: 0,
+        set_number: setNumber,
+        is_finalized: false,
       })
       .select("id")
       .single();
@@ -77,10 +124,11 @@ export async function POST(req: NextRequest) {
         schoolId,
         config,
         sectionOrder,
+        previousQuestions,
       },
     });
 
-    return NextResponse.json({ success: true, worksheetId: worksheet.id });
+    return NextResponse.json({ success: true, worksheetId: worksheet.id, setNumber });
 
   } catch (error) {
     console.error("Generate error:", error);

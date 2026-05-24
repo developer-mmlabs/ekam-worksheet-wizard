@@ -2,7 +2,19 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
-import type { Grade, Subject, Chapter, WorksheetStatus, WorksheetConfigValues, WorksheetControl } from "@/types";
+import type {
+  Grade,
+  Subject,
+  Chapter,
+  WorksheetStatus,
+  WorksheetConfigValues,
+  WorksheetControl,
+  ChapterStatusResponse,
+  WorksheetQuestions,
+  QuestionSection,
+  Question,
+  QuestionUpdate,
+} from "@/types";
 import { getWorksheetConfigSpec, defaultConfigValues } from "@/lib/worksheet-configs";
 import {
   DndContext,
@@ -21,6 +33,10 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+
+// ============================================================
+// Sortable control row (drag-and-drop question type reordering)
+// ============================================================
 
 function SortableControlRow({
   control,
@@ -69,6 +85,331 @@ function SortableControlRow({
   );
 }
 
+// ============================================================
+// Worksheet Set Progress Panel
+// ============================================================
+
+interface WorksheetSlot {
+  id: string;
+  setNumber: number;
+  status: WorksheetStatus;
+  isFinalized: boolean;
+  pdfUrl: string | null;
+  createdAt: string;
+}
+
+function SetProgressPanel({
+  slots,
+  nextSetNumber,
+  onViewWorksheet,
+}: {
+  slots: WorksheetSlot[];
+  nextSetNumber: number | null;
+  onViewWorksheet: (slot: WorksheetSlot) => void;
+}) {
+  return (
+    <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">Worksheet Set Progress</h3>
+      <div className="grid grid-cols-3 gap-3">
+        {[1, 2, 3].map((n) => {
+          const slot = slots.find((s) => s.setNumber === n);
+          const isEmpty = !slot;
+          const isFinalized = slot?.isFinalized;
+          const isCompleted = slot?.status === "completed" && !isFinalized;
+          const isPending = slot?.status === "pending" || slot?.status === "processing";
+
+          return (
+            <div
+              key={n}
+              className={`rounded-lg border-2 p-3 text-center ${
+                isFinalized
+                  ? "border-green-400 bg-green-50"
+                  : isCompleted
+                  ? "border-blue-400 bg-blue-50"
+                  : isPending
+                  ? "border-yellow-400 bg-yellow-50"
+                  : "border-gray-200 bg-white"
+              }`}
+            >
+              <div className="text-xs font-medium text-gray-500 mb-1">Set {n}</div>
+              {isFinalized && (
+                <>
+                  <div className="text-green-700 text-xs font-semibold mb-2">Finalized</div>
+                  <button
+                    onClick={() => slot && onViewWorksheet(slot)}
+                    className="text-xs text-green-600 hover:text-green-800 underline"
+                  >
+                    View PDF
+                  </button>
+                </>
+              )}
+              {isCompleted && (
+                <>
+                  <div className="text-blue-700 text-xs font-semibold mb-2">Ready for Review</div>
+                  <button
+                    onClick={() => slot && onViewWorksheet(slot)}
+                    className="text-xs text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Review
+                  </button>
+                </>
+              )}
+              {isPending && (
+                <div className="text-yellow-700 text-xs font-semibold">Generating...</div>
+              )}
+              {isEmpty && (
+                <div className="text-gray-400 text-xs">
+                  {nextSetNumber === n ? "Next" : "Empty"}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Question Edit Modal
+// ============================================================
+
+function QuestionEditModal({
+  worksheetId,
+  questionsJson,
+  onClose,
+  onSaved,
+}: {
+  worksheetId: string;
+  questionsJson: WorksheetQuestions;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [sections, setSections] = useState<QuestionSection[]>(questionsJson.sections);
+  const [editCount, setEditCount] = useState(0);
+  const [editedCells, setEditedCells] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [updates, setUpdates] = useState<QuestionUpdate[]>([]);
+  const maxEdits = 5;
+
+  function markEdited(key: string) {
+    if (!editedCells.has(key)) {
+      setEditedCells((prev) => new Set(prev).add(key));
+      setEditCount((c) => c + 1);
+    }
+  }
+
+  function updateQuestion(
+    sectionIdx: number,
+    questionIdx: number,
+    field: keyof Question,
+    value: string,
+    caseStudyIdx?: number,
+  ) {
+    const key = `${sectionIdx}-${caseStudyIdx ?? "q"}-${questionIdx}-${field}`;
+    markEdited(key);
+
+    setSections((prev) => {
+      const next = JSON.parse(JSON.stringify(prev)) as QuestionSection[];
+      let q: Question;
+      if (caseStudyIdx !== undefined) {
+        q = next[sectionIdx].caseStudies![caseStudyIdx].questions[questionIdx];
+      } else {
+        q = next[sectionIdx].questions![questionIdx];
+      }
+      (q as unknown as Record<string, unknown>)[field] = value;
+      return next;
+    });
+
+    // Track the update
+    setUpdates((prev) => {
+      const existing = prev.findIndex(
+        (u) =>
+          u.sectionIndex === sectionIdx &&
+          u.questionIndex === questionIdx &&
+          u.caseStudyIndex === caseStudyIdx,
+      );
+      const changes: Partial<Question> = { [field]: value };
+      if (existing >= 0) {
+        const next = [...prev];
+        next[existing] = { ...next[existing], changes: { ...next[existing].changes, ...changes } };
+        return next;
+      }
+      return [
+        ...prev,
+        { sectionIndex: sectionIdx, questionIndex: questionIdx, caseStudyIndex: caseStudyIdx, changes },
+      ];
+    });
+  }
+
+  async function handleSave() {
+    if (updates.length === 0) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/generate/questions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ worksheetId, updates }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || "Failed to save changes");
+        return;
+      }
+      onSaved();
+    } catch {
+      alert("Network error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center pt-8 overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl mx-4 mb-8">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Edit Questions</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              {editCount}/{maxEdits} edits used. Click on a question to edit it.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl p-1">
+            &times;
+          </button>
+        </div>
+
+        <div className="p-4 space-y-6 max-h-[70vh] overflow-y-auto">
+          {sections.map((section, sIdx) => (
+            <div key={sIdx}>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                Section {section.id}: {section.title}
+              </h3>
+
+              {/* Regular questions */}
+              {section.questions?.map((q, qIdx) => (
+                <div key={qIdx} className="mb-3 p-3 border border-gray-100 rounded-lg hover:border-gray-300">
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs font-mono text-gray-400 mt-1 shrink-0">Q{q.number}</span>
+                    <div className="flex-1">
+                      {section.type === "assertion_reason" ? (
+                        <div className="space-y-2">
+                          <div>
+                            <label className="text-xs text-gray-500">Assertion (A):</label>
+                            <textarea
+                              value={q.assertion || ""}
+                              disabled={editCount >= maxEdits && !editedCells.has(`${sIdx}-q-${qIdx}-assertion`)}
+                              onChange={(e) => updateQuestion(sIdx, qIdx, "assertion", e.target.value)}
+                              className="w-full text-sm border border-gray-200 rounded p-2 mt-1 resize-none disabled:bg-gray-50 disabled:text-gray-400"
+                              rows={2}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500">Reason (R):</label>
+                            <textarea
+                              value={q.reason || ""}
+                              disabled={editCount >= maxEdits && !editedCells.has(`${sIdx}-q-${qIdx}-reason`)}
+                              onChange={(e) => updateQuestion(sIdx, qIdx, "reason", e.target.value)}
+                              className="w-full text-sm border border-gray-200 rounded p-2 mt-1 resize-none disabled:bg-gray-50 disabled:text-gray-400"
+                              rows={2}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <textarea
+                          value={q.text}
+                          disabled={editCount >= maxEdits && !editedCells.has(`${sIdx}-q-${qIdx}-text`)}
+                          onChange={(e) => updateQuestion(sIdx, qIdx, "text", e.target.value)}
+                          className="w-full text-sm border border-gray-200 rounded p-2 resize-none disabled:bg-gray-50 disabled:text-gray-400"
+                          rows={2}
+                        />
+                      )}
+                      {q.options && (
+                        <div className="mt-2 space-y-1">
+                          {q.options.map((opt, oIdx) => (
+                            <div key={oIdx} className="flex items-center gap-2 text-sm">
+                              <span className="text-gray-400 text-xs">({opt.label})</span>
+                              <span className="text-gray-700">{opt.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Case study questions */}
+              {section.caseStudies?.map((cs, csIdx) => (
+                <div key={csIdx} className="mb-3 p-3 border border-gray-100 rounded-lg">
+                  <div className="text-xs text-gray-500 mb-2">Case Study {cs.number}</div>
+                  <textarea
+                    value={cs.stimulus}
+                    disabled
+                    className="w-full text-sm border border-gray-200 rounded p-2 resize-none bg-gray-50 text-gray-600 mb-2"
+                    rows={3}
+                  />
+                  {cs.questions.map((q, qIdx) => (
+                    <div key={qIdx} className="ml-4 mb-2 p-2 border border-gray-50 rounded hover:border-gray-200">
+                      <div className="flex items-start gap-2">
+                        <span className="text-xs font-mono text-gray-400 mt-1 shrink-0">{cs.number}.{q.number}</span>
+                        <div className="flex-1">
+                          <textarea
+                            value={q.text}
+                            disabled={editCount >= maxEdits && !editedCells.has(`${sIdx}-${csIdx}-${qIdx}-text`)}
+                            onChange={(e) => updateQuestion(sIdx, qIdx, "text", e.target.value, csIdx)}
+                            className="w-full text-sm border border-gray-200 rounded p-2 resize-none disabled:bg-gray-50 disabled:text-gray-400"
+                            rows={1}
+                          />
+                          {q.options && (
+                            <div className="mt-1 space-y-1">
+                              {q.options.map((opt, oIdx) => (
+                                <div key={oIdx} className="flex items-center gap-2 text-sm">
+                                  <span className="text-gray-400 text-xs">({opt.label})</span>
+                                  <span className="text-gray-700">{opt.text}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between p-4 border-t border-gray-200">
+          <span className="text-xs text-gray-500">
+            {updates.length} question{updates.length !== 1 ? "s" : ""} modified
+          </span>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={updates.length === 0 || saving}
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              {saving ? "Saving & Re-rendering..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Main Page
+// ============================================================
+
 export default function GeneratePage() {
   const [grades, setGrades] = useState<Grade[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -84,8 +425,19 @@ export default function GeneratePage() {
 
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState("");
+  const [activeWorksheetId, setActiveWorksheetId] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [activeSetNumber, setActiveSetNumber] = useState<number | null>(null);
+  const [isFinalized, setIsFinalized] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Chapter status (worksheet set progress)
+  const [chapterStatus, setChapterStatus] = useState<ChapterStatusResponse | null>(null);
+  const [schoolId, setSchoolId] = useState<string | null>(null);
+
+  // Edit modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editQuestionsJson, setEditQuestionsJson] = useState<WorksheetQuestions | null>(null);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -164,6 +516,37 @@ export default function GeneratePage() {
     }
   }, []);
 
+  // Load school on mount
+  useEffect(() => {
+    async function loadSchool() {
+      const res = await fetch("/api/school-settings");
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.id) setSchoolId(data.id);
+      }
+    }
+    loadSchool();
+  }, []);
+
+  // Load chapter status when chapter + school are selected
+  const loadChapterStatus = useCallback(async () => {
+    if (!selectedChapter || !schoolId) {
+      setChapterStatus(null);
+      return;
+    }
+    const res = await fetch(
+      `/api/generate/chapter-status?chapterId=${selectedChapter}&schoolId=${schoolId}`
+    );
+    if (res.ok) {
+      const data: ChapterStatusResponse = await res.json();
+      setChapterStatus(data);
+    }
+  }, [selectedChapter, schoolId]);
+
+  useEffect(() => {
+    loadChapterStatus();
+  }, [loadChapterStatus]);
+
   function pollForCompletion(worksheetId: string) {
     pollingRef.current = setInterval(async () => {
       try {
@@ -180,8 +563,11 @@ export default function GeneratePage() {
         if (status === "completed") {
           stopPolling();
           setPdfUrl(data.pdfUrl);
+          setActiveSetNumber(data.setNumber);
+          setIsFinalized(data.isFinalized);
           setProgress("Worksheet ready!");
           setGenerating(false);
+          loadChapterStatus();
         }
 
         if (status === "failed") {
@@ -250,8 +636,16 @@ export default function GeneratePage() {
     setConfigValues((prev) => ({ ...prev, [id]: value }));
   }
 
+  function resetWorksheetView() {
+    setPdfUrl(null);
+    setActiveWorksheetId(null);
+    setActiveSetNumber(null);
+    setIsFinalized(false);
+    setError(null);
+  }
+
   async function handleGenerate() {
-    if (!selectedChapter) return;
+    if (!selectedChapter || !schoolId) return;
 
     setGenerating(true);
     setError(null);
@@ -259,22 +653,12 @@ export default function GeneratePage() {
     setProgress("Submitting generation request...");
 
     try {
-      const schoolRes = await fetch("/api/school-settings");
-      if (!schoolRes.ok) {
-        throw new Error("No school configured. Go to Admin > Settings first.");
-      }
-      const school = await schoolRes.json();
-
-      if (!school?.id) {
-        throw new Error("No school configured. Go to Admin > Settings first.");
-      }
-
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chapterId: selectedChapter,
-          schoolId: school.id,
+          schoolId,
           config: configValues,
           sectionOrder,
         }),
@@ -297,21 +681,91 @@ export default function GeneratePage() {
         throw new Error(result.error || "Generation failed");
       }
 
+      setActiveWorksheetId(result.worksheetId);
+      setActiveSetNumber(result.setNumber);
       setProgress("Generating questions with AI (this may take up to 2 minutes)...");
       pollForCompletion(result.worksheetId);
-
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
       setGenerating(false);
     }
   }
 
+  async function handleFinalize() {
+    if (!activeWorksheetId) return;
+
+    try {
+      const res = await fetch("/api/generate/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ worksheetId: activeWorksheetId }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        setError(err.error || "Finalization failed");
+        return;
+      }
+
+      setIsFinalized(true);
+      loadChapterStatus();
+    } catch {
+      setError("Network error during finalization");
+    }
+  }
+
+  async function handleEditQuestions() {
+    if (!activeWorksheetId) return;
+
+    try {
+      const res = await fetch(`/api/generate/status?id=${activeWorksheetId}&include=questions`);
+      if (!res.ok) {
+        setError("Failed to load questions");
+        return;
+      }
+      const data = await res.json();
+      if (data.questionsJson) {
+        setEditQuestionsJson(data.questionsJson);
+        setShowEditModal(true);
+      }
+    } catch {
+      setError("Failed to load questions for editing");
+    }
+  }
+
+  function handleViewWorksheet(slot: WorksheetSlot) {
+    setActiveWorksheetId(slot.id);
+    setPdfUrl(slot.pdfUrl);
+    setActiveSetNumber(slot.setNumber);
+    setIsFinalized(slot.isFinalized);
+    setError(null);
+  }
+
+  function handleEditSaved() {
+    setShowEditModal(false);
+    setEditQuestionsJson(null);
+    // The PDF is being re-rendered — poll for completion
+    if (activeWorksheetId) {
+      setGenerating(true);
+      setProgress("Re-rendering PDF with your changes...");
+      pollForCompletion(activeWorksheetId);
+    }
+  }
+
+  const allFinalized = chapterStatus?.nextSetNumber === null && (chapterStatus?.worksheets.length ?? 0) > 0;
+  const canGenerate = selectedChapter && schoolId && !generating && !allFinalized;
+  const generateLabel = chapterStatus?.nextSetNumber
+    ? `Generate Worksheet ${chapterStatus.nextSetNumber}`
+    : allFinalized
+    ? "All 3 Worksheets Finalized"
+    : "Generate Worksheet";
+
   return (
     <div className="max-w-2xl mx-auto">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Generate Worksheet</h1>
         <p className="text-gray-500 mb-8">
-          Select a grade, subject, and chapter to generate a print-ready PDF worksheet.
+          Select a grade, subject, and chapter to generate a set of 3 unique PDF worksheets.
         </p>
 
         <div className="space-y-6">
@@ -324,7 +778,7 @@ export default function GeneratePage() {
                 setSelectedGrade(e.target.value);
                 setSelectedSubject("");
                 setSelectedChapter("");
-                setPdfUrl(null);
+                resetWorksheetView();
               }}
               className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
@@ -343,7 +797,7 @@ export default function GeneratePage() {
               onChange={(e) => {
                 setSelectedSubject(e.target.value);
                 setSelectedChapter("");
-                setPdfUrl(null);
+                resetWorksheetView();
               }}
               disabled={!selectedGrade}
               className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
@@ -364,7 +818,7 @@ export default function GeneratePage() {
               value={selectedChapter}
               onChange={(e) => {
                 setSelectedChapter(e.target.value);
-                setPdfUrl(null);
+                resetWorksheetView();
               }}
               disabled={!selectedSubject}
               className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
@@ -380,8 +834,17 @@ export default function GeneratePage() {
             </select>
           </div>
 
+          {/* Worksheet Set Progress */}
+          {chapterStatus && chapterStatus.worksheets.length > 0 && (
+            <SetProgressPanel
+              slots={chapterStatus.worksheets}
+              nextSetNumber={chapterStatus.nextSetNumber}
+              onViewWorksheet={handleViewWorksheet}
+            />
+          )}
+
           {/* Config-driven Question Options */}
-          {selectedChapter && configSpec && (
+          {selectedChapter && configSpec && !allFinalized && (
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <button
                 type="button"
@@ -431,10 +894,10 @@ export default function GeneratePage() {
           {/* Generate button */}
           <button
             onClick={handleGenerate}
-            disabled={!selectedChapter || generating}
+            disabled={!canGenerate}
             className="w-full bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
           >
-            {generating ? "Generating..." : "Generate Worksheet"}
+            {generating ? "Generating..." : generateLabel}
           </button>
 
           {generating && (
@@ -450,22 +913,48 @@ export default function GeneratePage() {
             </div>
           )}
 
-          {pdfUrl && (
+          {pdfUrl && !generating && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-green-700">
-                  Worksheet generated successfully!
+                  {isFinalized
+                    ? `Worksheet Set ${activeSetNumber} — Finalized`
+                    : `Worksheet Set ${activeSetNumber} — Ready for Review`}
                 </p>
-                <a
-                  href={pdfUrl}
-                  download
-                  className="inline-flex items-center gap-2 bg-green-600 text-white font-medium py-2 px-4 rounded-lg hover:bg-green-700 transition-colors text-sm"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  <span>Download PDF</span>
-                </a>
+                <div className="flex gap-2">
+                  {!isFinalized && (
+                    <>
+                      <button
+                        onClick={handleEditQuestions}
+                        className="inline-flex items-center gap-1.5 bg-gray-100 text-gray-700 font-medium py-2 px-3 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Edit Questions
+                      </button>
+                      <button
+                        onClick={handleFinalize}
+                        className="inline-flex items-center gap-1.5 bg-green-600 text-white font-medium py-2 px-3 rounded-lg hover:bg-green-700 transition-colors text-sm"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Finalize
+                      </button>
+                    </>
+                  )}
+                  <a
+                    href={pdfUrl}
+                    download
+                    className="inline-flex items-center gap-1.5 bg-blue-600 text-white font-medium py-2 px-3 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download
+                  </a>
+                </div>
               </div>
               <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-100">
                 <iframe
@@ -479,6 +968,19 @@ export default function GeneratePage() {
           )}
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {showEditModal && editQuestionsJson && activeWorksheetId && (
+        <QuestionEditModal
+          worksheetId={activeWorksheetId}
+          questionsJson={editQuestionsJson}
+          onClose={() => {
+            setShowEditModal(false);
+            setEditQuestionsJson(null);
+          }}
+          onSaved={handleEditSaved}
+        />
+      )}
     </div>
   );
 }

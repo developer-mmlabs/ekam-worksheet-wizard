@@ -7,7 +7,7 @@
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_IMAGE_MODEL =
-  process.env.OPENROUTER_IMAGE_MODEL || "google/gemini-2.5-flash-image";
+  process.env.OPENROUTER_IMAGE_MODEL || "google/gemini-3.1-flash-image-preview";
 
 // Locked stylistic suffix applied to every prompt. Keeps output consistent
 // across worksheets and away from the LLM's reach.

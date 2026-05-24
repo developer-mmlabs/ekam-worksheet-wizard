@@ -134,16 +134,12 @@ Fires for: a kite scene (chapter "Heights and Distances" — the angle in the dr
 If the case study mentions specific angles, lengths, ratios, or coordinates that need to be VISUALLY ACCURATE → DO NOT use Track A. Use Track D.
 Prompt format: 1-3 sentences describing the scene. Style is locked server-side (flat illustrative, soft colours, white background) — do not redescribe style.
 
-TRIGGER C → use "imageNcertHint" (Track B, NCERT extraction — currently a no-op placeholder):
-The diagram is something neither AI image gen nor SVG can produce: outline maps with country / state borders, recognisable likeness of named historical figures, NCERT-original political cartoons, anatomically precise labelled biological diagrams (heart chambers, eye anatomy), electrical circuit topology where component connectivity must be electrically correct.
-Format: a short crop phrase, e.g. "Political outline map of India with state borders".
-
 CHOICE RULES:
-- Pick AT MOST ONE of the three fields per case study. Never multiple.
-- When no trigger fires → OMIT all three fields entirely. Do not emit empty objects, empty strings, or placeholder text — the field must not appear in the JSON at all.
+- Pick AT MOST ONE of the two fields per case study (imageSvg or imagePrompt). Never both.
+- When no trigger fires → OMIT both fields entirely. Do not emit empty objects, empty strings, or placeholder text — the field must not appear in the JSON at all.
 - Across multiple case studies in the same worksheet, it is NORMAL AND EXPECTED for some (often most) to have no image. Do not feel obligated to image every case study.
-- If specific measurable geometry is at stake, prefer Track D over Track A.
-- Do not name real public figures in Track A prompts. If a public figure is essential, use Track B.`;
+- If specific measurable geometry is at stake, prefer Track D (imageSvg) over Track A (imagePrompt).
+- Do not name real public figures in imagePrompt.`;
 
 const SVG_MATH_PATTERNS = `
 SVG MATH DIAGRAMS — read this section ONLY IF Trigger A in IMAGE RULES applied to the current case study. If no measurable geometry is at stake for this case study, SKIP this entire section and emit no imageSvg.
@@ -531,7 +527,7 @@ ${SVG_MATH_PATTERNS}`,
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
         ]}]
-        /* Optional image field "imageSvg" / "imagePrompt" / "imageNcertHint" — see IMAGE RULES. DEFAULT is to omit all three. */
+        /* Optional image field "imageSvg" or "imagePrompt" — see IMAGE RULES. DEFAULT is to omit both. */
       }] }`,
       verify: (i) => [
         `- sections[${i}].caseStudies.length === ${cfg.caseStudy}`,
@@ -613,7 +609,7 @@ ${CASE_STUDY_QUALITY_RULES}
 ${IMAGE_RULES}
 Science-specific guidance (when an image IS warranted):
 - For real-world phenomena that anchor the scenario (power plants, ecosystems, household appliances, lab observations from a distance): Trigger B → imagePrompt works well.
-- For precise circuit diagrams, ray diagrams, anatomically accurate labelled specimens: Trigger C → imageNcertHint — Track B (NCERT) is more reliable for these than AI image gen.
+- For precise circuit diagrams, ray diagrams, anatomically accurate labelled specimens: Trigger B → imagePrompt with a detailed descriptive scene.
 - Track D (imageSvg) suits simple ray-paths, lens / mirror setups, free-body diagrams, and any case where specific angles or distances are interrogated.`,
       schemaEntry: (id) => `{ "id": "${id}", "title": "Case Study", "type": "case_study",
       "caseStudies": [{
@@ -623,7 +619,7 @@ Science-specific guidance (when an image IS warranted):
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
         ]}]
-        /* Optional image field "imageSvg" / "imagePrompt" / "imageNcertHint" — see IMAGE RULES. DEFAULT is to omit all three. */
+        /* Optional image field "imageSvg" or "imagePrompt" — see IMAGE RULES. DEFAULT is to omit both. */
       }] }`,
       verify: (i) => [
         `- sections[${i}].caseStudies.length === ${cfg.caseStudy}`,
@@ -707,13 +703,13 @@ ${CASE_STUDY_QUALITY_RULES}
 ${IMAGE_RULES}
 Social-Science specific guidance (when an image IS warranted — usually it isn't):
 - For period crowd scenes, everyday-life of an era, generic landscapes (rarely needed): Trigger B → imagePrompt.
-- For political maps with state / country borders, recognisable historical figures by name, NCERT-original political cartoons: Trigger C → imageNcertHint — AI cannot do these reliably.
+- For political maps with state / country borders, historical scenes, political cartoons: Trigger B → imagePrompt with a detailed descriptive scene.
 - For chart-based interpretation items (bar chart, pie chart, line graph that the sub-questions read off): Trigger A → imageSvg.`,
       schemaEntry: (id) => `{ "id": "${id}", "title": "Source-Based Questions", "type": "case_study",
       "caseStudies": [{
         "number": 1,
         "stimulus": "<150-200 word source extract, 8-12 lines, primary-text style>",
-        /* Optional image field "imageSvg" / "imagePrompt" / "imageNcertHint" — see IMAGE RULES. DEFAULT is to omit all three. Quoted-text extracts MUST NOT have an image. */
+        /* Optional image field "imageSvg" or "imagePrompt" — see IMAGE RULES. DEFAULT is to omit both. Quoted-text extracts MUST NOT have an image. */
         "questions": [{ "number": 1, "text": "<sub-question>", "options": [
           {"label": "a", "text": "<option>"}, {"label": "b", "text": "<option>"},
           {"label": "c", "text": "<option>"}, {"label": "d", "text": "<option>"}
@@ -974,17 +970,38 @@ ${schemaText}
 // Dispatch: pick Class 10 subject-specific prompt or generic fallback
 // ============================================================
 
-function buildSystemPrompt(ctx: GenerationContext, cfg: WorksheetConfigValues, sectionOrder?: string[]): string {
+function buildDeduplicationBlock(previousQuestions: string[]): string {
+  if (previousQuestions.length === 0) return "";
+  const numbered = previousQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n");
+  return `
+
+DEDUPLICATION — the following questions appeared in earlier worksheets for the SAME chapter.
+DO NOT repeat any of them — not even paraphrased versions. Generate entirely fresh questions.
+<previously_used>
+${numbered}
+</previously_used>`;
+}
+
+function buildSystemPrompt(ctx: GenerationContext, cfg: WorksheetConfigValues, sectionOrder?: string[], previousQuestions?: string[]): string {
+  let prompt: string;
   if (ctx.gradeNumber === 10) {
     switch (ctx.subjectSlug) {
-      case "mathematics":     return class10Maths(ctx.chapterName, cfg, sectionOrder);
-      case "science":         return class10Science(ctx.chapterName, cfg, sectionOrder);
-      case "social_studies":  return class10SocialScience(ctx.chapterName, cfg, sectionOrder);
-      case "english":         return class10English(ctx.chapterName, cfg, sectionOrder);
-      case "hindi":           return class10Hindi(ctx.chapterName, cfg, sectionOrder);
+      case "mathematics":     prompt = class10Maths(ctx.chapterName, cfg, sectionOrder); break;
+      case "science":         prompt = class10Science(ctx.chapterName, cfg, sectionOrder); break;
+      case "social_studies":  prompt = class10SocialScience(ctx.chapterName, cfg, sectionOrder); break;
+      case "english":         prompt = class10English(ctx.chapterName, cfg, sectionOrder); break;
+      case "hindi":           prompt = class10Hindi(ctx.chapterName, cfg, sectionOrder); break;
+      default:                prompt = buildGenericPrompt(cfg, sectionOrder);
     }
+  } else {
+    prompt = buildGenericPrompt(cfg, sectionOrder);
   }
-  return buildGenericPrompt(cfg, sectionOrder);
+
+  if (previousQuestions && previousQuestions.length > 0) {
+    prompt += buildDeduplicationBlock(previousQuestions);
+  }
+
+  return prompt;
 }
 
 // ============================================================
@@ -996,6 +1013,7 @@ export async function generateQuestions(
   context: GenerationContext,
   config: WorksheetConfigValues,
   sectionOrder?: string[],
+  previousQuestions?: string[],
 ): Promise<WorksheetQuestions> {
   const contentParts = [];
 
@@ -1024,7 +1042,7 @@ export async function generateQuestions(
   );
 
   const response = await callLLM([
-    { role: "system", content: buildSystemPrompt(context, config, sectionOrder) },
+    { role: "system", content: buildSystemPrompt(context, config, sectionOrder, previousQuestions) },
     { role: "user", content: contentParts },
   ]);
 

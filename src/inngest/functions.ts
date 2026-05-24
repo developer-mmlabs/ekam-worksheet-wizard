@@ -5,17 +5,18 @@ import { generateImage, isImageGenAvailable } from "@/lib/image-gen";
 import { generateWorksheetPDF } from "@/lib/pdf/generator";
 import { getTheme } from "@/lib/pdf/templates/themes";
 import { defaultConfigValues, getWorksheetConfigSpec } from "@/lib/worksheet-configs";
-import type { Grade, Subject, Chapter, School, GradeBand, WorksheetConfigValues } from "@/types";
+import type { Grade, Subject, Chapter, School, GradeBand, WorksheetConfigValues, WorksheetQuestions } from "@/types";
 
 export const processWorksheet = inngest.createFunction(
   { id: "process-worksheet", triggers: [{ event: "worksheet/generate.requested" }] },
   async ({ event, step }) => {
-    const { worksheetId, chapterId, schoolId, config: incomingConfig, sectionOrder } = event.data as {
+    const { worksheetId, chapterId, schoolId, config: incomingConfig, sectionOrder, previousQuestions } = event.data as {
       worksheetId: string;
       chapterId: string;
       schoolId: string;
       config?: WorksheetConfigValues;
       sectionOrder?: string[];
+      previousQuestions?: string[];
     };
 
     // Step 1: Mark as processing and load all metadata
@@ -100,32 +101,20 @@ export const processWorksheet = inngest.createFunction(
         },
         config,
         sectionOrder,
+        previousQuestions,
       );
     });
 
-    // Step 3.5: Generate case-study images in parallel.
-    // Two paths the LLM can choose per case study:
-    //   - imagePrompt -> Track A (AI image gen, implemented here)
-    //   - imageNcertHint -> Track B (NCERT extraction, not yet implemented; logged + skipped)
+    // Step 3.5: Generate case-study images in parallel via AI image gen.
     if (await isImageGenAvailable()) {
       const imageJobs: { sectionIdx: number; csIdx: number; prompt: string }[] = [];
-      const ncertSkips: { sectionIdx: number; csIdx: number; hint: string }[] = [];
       questions.sections.forEach((section, sIdx) => {
         section.caseStudies?.forEach((cs, csIdx) => {
           if (cs.imagePrompt && cs.imagePrompt.trim().length > 0) {
             imageJobs.push({ sectionIdx: sIdx, csIdx, prompt: cs.imagePrompt });
-          } else if (cs.imageNcertHint && cs.imageNcertHint.trim().length > 0) {
-            ncertSkips.push({ sectionIdx: sIdx, csIdx, hint: cs.imageNcertHint });
           }
         });
       });
-
-      if (ncertSkips.length > 0) {
-        console.log(
-          `[worksheet-gen] ${ncertSkips.length} case study(ies) marked for NCERT extraction (Track B, not yet implemented). Skipping:`,
-          ncertSkips.map((s) => s.hint),
-        );
-      }
 
       if (imageJobs.length > 0) {
         const imageResults = await Promise.all(
@@ -222,6 +211,108 @@ export const processWorksheet = inngest.createFunction(
           status: "completed",
           pdf_url: pdfUrl,
           questions_json: questions,
+          page_count: Math.min(4, Math.ceil(questions.metadata.totalQuestions / 8)),
+        })
+        .eq("id", worksheetId);
+    });
+
+    return { worksheetId, status: "completed" };
+  },
+);
+
+// ============================================================
+// PDF Regeneration (after question edits — skips AI generation)
+// ============================================================
+
+export const regeneratePDF = inngest.createFunction(
+  { id: "regenerate-pdf", triggers: [{ event: "worksheet/pdf.regenerate" }] },
+  async ({ event, step }) => {
+    const { worksheetId } = event.data as { worksheetId: string };
+
+    const metadata = await step.run("load-metadata", async () => {
+      const { data: worksheet, error: wsError } = await supabaseAdmin
+        .from("worksheets")
+        .select("*, chapter:chapters(*, subject:subjects(*, grade:grades(*)))")
+        .eq("id", worksheetId)
+        .single();
+
+      if (wsError || !worksheet) throw new Error("Worksheet not found");
+
+      const { data: school, error: schoolError } = await supabaseAdmin
+        .from("schools")
+        .select("*")
+        .eq("id", worksheet.school_id)
+        .single();
+
+      if (schoolError || !school) throw new Error("School not found");
+
+      return { worksheet, school };
+    });
+
+    const { worksheet, school } = metadata;
+    const chapter = worksheet.chapter as unknown as Chapter & {
+      subject: Subject & { grade: Grade };
+    };
+    const subjectData = chapter.subject;
+    const gradeData = subjectData.grade;
+    const questions = worksheet.questions_json as unknown as WorksheetQuestions;
+
+    const pdfBuffer = await step.run("generate-pdf", async () => {
+      const theme = getTheme(gradeData.band as GradeBand, subjectData.slug, {
+        primary: (school as School).primary_color,
+        secondary: (school as School).secondary_color,
+      });
+
+      const { count } = await supabaseAdmin
+        .from("worksheets")
+        .select("id", { count: "exact", head: true })
+        .eq("chapter_id", chapter.id);
+
+      const worksheetNumber = count || 1;
+
+      const buffer = await generateWorksheetPDF({
+        school: school as School,
+        grade: gradeData as Grade,
+        subject: subjectData as Subject,
+        chapter: chapter as Chapter,
+        questions,
+        worksheetNumber,
+        theme,
+      });
+
+      return {
+        base64: Buffer.from(buffer).toString("base64"),
+        worksheetNumber,
+      };
+    });
+
+    await step.run("upload-and-complete", async () => {
+      const buffer = Buffer.from(pdfBuffer.base64, "base64");
+      const worksheetNumber = pdfBuffer.worksheetNumber;
+
+      const gradeName = gradeData.name.replace(/\s+/g, "-");
+      const subjectSlug = subjectData.slug;
+      const chapterLabel = `Ch${chapter.number}-${chapter.name.replace(/[^a-zA-Z0-9]+/g, "-").replace(/-+$/, "")}`;
+      const timestamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
+      const pdfPath = `${worksheet.school_id}/${gradeName}/${subjectSlug}/${chapterLabel}-WS${worksheetNumber}-${timestamp}.pdf`;
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("worksheets")
+        .upload(pdfPath, buffer, { contentType: "application/pdf" });
+
+      let pdfUrl: string | null = null;
+      if (!uploadError) {
+        const { data: { publicUrl } } = supabaseAdmin.storage
+          .from("worksheets")
+          .getPublicUrl(pdfPath);
+        pdfUrl = publicUrl;
+      }
+
+      await supabaseAdmin
+        .from("worksheets")
+        .update({
+          status: "completed",
+          pdf_url: pdfUrl,
           page_count: Math.min(4, Math.ceil(questions.metadata.totalQuestions / 8)),
         })
         .eq("id", worksheetId);

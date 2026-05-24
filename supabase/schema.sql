@@ -65,6 +65,9 @@ CREATE TABLE IF NOT EXISTS worksheets (
   page_count INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
   error_message TEXT,
+  set_number INTEGER NOT NULL DEFAULT 1 CHECK (set_number BETWEEN 1 AND 3),
+  is_finalized BOOLEAN NOT NULL DEFAULT false,
+  finalized_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -74,6 +77,8 @@ CREATE INDEX IF NOT EXISTS idx_chapters_subject ON chapters(subject_id);
 CREATE INDEX IF NOT EXISTS idx_source_materials_chapter ON source_materials(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_worksheets_chapter ON worksheets(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_worksheets_status ON worksheets(status);
+CREATE INDEX IF NOT EXISTS idx_worksheets_chapter_school ON worksheets(chapter_id, school_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_worksheets_unique_set ON worksheets(chapter_id, school_id, set_number) WHERE is_finalized = true;
 
 -- Seed grades
 INSERT INTO grades (number, name, band) VALUES

@@ -61,6 +61,9 @@ export interface Worksheet {
   page_count: number;
   status: WorksheetStatus;
   error_message: string | null;
+  set_number: number; // 1, 2, or 3
+  is_finalized: boolean;
+  finalized_at: string | null;
   created_at: string;
 }
 
@@ -102,10 +105,9 @@ export interface CaseStudy {
   number: number;
   stimulus: string;
   questions: Question[];
-  imagePrompt?: string; // Track A: AI-generation prompt
-  imageNcertHint?: string; // Track B: hint for cropping the right NCERT figure (not yet implemented; skipped at runtime)
-  imageSvg?: SvgDiagram; // Track D: math-exact SVG diagram, rendered directly via react-pdf primitives
-  imageUrl?: string; // Populated after Track A gen + upload, or Track B crop. Consumed by PDF renderer.
+  imagePrompt?: string; // AI image generation prompt
+  imageSvg?: SvgDiagram; // Math-exact SVG diagram, rendered directly via react-pdf primitives
+  imageUrl?: string; // Populated after image gen + upload. Consumed by PDF renderer.
 }
 
 // ============================================================
@@ -284,10 +286,74 @@ export interface WorksheetStatusResponse {
   errorMessage: string | null;
   questionCount: number | null;
   pageCount: number | null;
+  setNumber: number;
+  isFinalized: boolean;
+  questionsJson?: WorksheetQuestions; // Included when ?include=questions
+}
+
+export interface FinalizeRequest {
+  worksheetId: string;
+}
+
+export interface FinalizeResponse {
+  success: boolean;
+  nextSetNumber: number | null; // null if all 3 finalized
+  error?: string;
+}
+
+export interface ChapterStatusResponse {
+  worksheets: Array<{
+    id: string;
+    setNumber: number;
+    status: WorksheetStatus;
+    isFinalized: boolean;
+    pdfUrl: string | null;
+    createdAt: string;
+  }>;
+  nextSetNumber: number | null; // next available slot (null if all 3 finalized)
+}
+
+export interface QuestionEditRequest {
+  worksheetId: string;
+  updates: QuestionUpdate[];
+}
+
+export interface QuestionUpdate {
+  sectionIndex: number;
+  questionIndex: number;
+  caseStudyIndex?: number; // if editing a case study sub-question
+  changes: Partial<Question>;
 }
 
 export interface UploadRequest {
   chapterId: string;
   type: "textbook" | "past_paper";
   pageNumber: number;
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+
+/** Flatten all question texts from a WorksheetQuestions object for deduplication. */
+export function flattenQuestionsForDedup(wq: WorksheetQuestions): string[] {
+  const texts: string[] = [];
+  for (const section of wq.sections) {
+    if (section.questions) {
+      for (const q of section.questions) {
+        texts.push(q.text);
+        if (q.assertion) texts.push(`Assertion: ${q.assertion}`);
+        if (q.reason) texts.push(`Reason: ${q.reason}`);
+      }
+    }
+    if (section.caseStudies) {
+      for (const cs of section.caseStudies) {
+        texts.push(cs.stimulus);
+        for (const q of cs.questions) {
+          texts.push(q.text);
+        }
+      }
+    }
+  }
+  return texts;
 }

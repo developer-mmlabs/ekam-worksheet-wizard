@@ -7,8 +7,26 @@ import { getTheme } from "@/lib/pdf/templates/themes";
 import { defaultConfigValues, getWorksheetConfigSpec } from "@/lib/worksheet-configs";
 import type { Grade, Subject, Chapter, School, GradeBand, WorksheetConfigValues, WorksheetQuestions } from "@/types";
 
+// Shared failure handler — marks a worksheet as failed when the Inngest function crashes or times out
+async function handleFunctionFailure(worksheetId: string, error: unknown) {
+  const message = error instanceof Error ? error.message : "Unknown error";
+  console.error(`[worksheet-gen] Function failed for ${worksheetId}: ${message}`);
+  await supabaseAdmin
+    .from("worksheets")
+    .update({ status: "failed", error_message: message.slice(0, 500) })
+    .eq("id", worksheetId)
+    .in("status", ["pending", "processing"]); // only update if still in-flight
+}
+
 export const processWorksheet = inngest.createFunction(
-  { id: "process-worksheet", triggers: [{ event: "worksheet/generate.requested" }] },
+  {
+    id: "process-worksheet",
+    triggers: [{ event: "worksheet/generate.requested" }],
+    onFailure: async ({ event }) => {
+      const worksheetId = event.data.event.data?.worksheetId as string | undefined;
+      if (worksheetId) await handleFunctionFailure(worksheetId, event.data.error);
+    },
+  },
   async ({ event, step }) => {
     const { worksheetId, chapterId, schoolId, config: incomingConfig, sectionOrder, previousQuestions } = event.data as {
       worksheetId: string;
@@ -200,7 +218,14 @@ export const processWorksheet = inngest.createFunction(
 // ============================================================
 
 export const regeneratePDF = inngest.createFunction(
-  { id: "regenerate-pdf", triggers: [{ event: "worksheet/pdf.regenerate" }] },
+  {
+    id: "regenerate-pdf",
+    triggers: [{ event: "worksheet/pdf.regenerate" }],
+    onFailure: async ({ event }) => {
+      const worksheetId = event.data.event.data?.worksheetId as string | undefined;
+      if (worksheetId) await handleFunctionFailure(worksheetId, event.data.error);
+    },
+  },
   async ({ event, step }) => {
     const { worksheetId } = event.data as { worksheetId: string };
 

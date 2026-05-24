@@ -21,15 +21,36 @@ export async function GET(req: NextRequest) {
   }
 
   // Compute queue position for pending/processing worksheets
+  // Ignore stale rows older than 15 minutes (likely orphaned)
   let queuePosition: number | null = null;
   if (worksheet.status === "pending" || worksheet.status === "processing") {
+    const staleThreshold = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+
     const { count } = await supabaseAdmin
       .from("worksheets")
       .select("id", { count: "exact", head: true })
       .in("status", ["pending", "processing"])
+      .gt("created_at", staleThreshold)
       .lt("created_at", worksheet.created_at);
 
     queuePosition = (count ?? 0) + 1;
+
+    // If this worksheet itself is stale (>15 min in pending/processing), mark it failed
+    if (worksheet.created_at < staleThreshold) {
+      await supabaseAdmin
+        .from("worksheets")
+        .update({ status: "failed", error_message: "Generation timed out" })
+        .eq("id", worksheetId)
+        .in("status", ["pending", "processing"]);
+
+      return NextResponse.json({
+        ...({
+          id: worksheet.id, status: "failed" as const, pdfUrl: null,
+          errorMessage: "Generation timed out", questionCount: null, pageCount: null,
+          setNumber: worksheet.set_number, isFinalized: false, queuePosition: null,
+        }),
+      });
+    }
   }
 
   const response: WorksheetStatusResponse = {

@@ -8,15 +8,24 @@ import * as fs from "fs";
 // CBSE logo — read once and cache as base64 data URI for @react-pdf/renderer
 let cbseLogoDataUri: string | null = null;
 function getCbseLogoUri(): string | null {
-  if (cbseLogoDataUri !== null) return cbseLogoDataUri;
-  try {
-    const logoPath = path.resolve(process.cwd(), "public/cbse.png");
-    const buffer = fs.readFileSync(logoPath);
-    cbseLogoDataUri = `data:image/png;base64,${buffer.toString("base64")}`;
-  } catch {
-    cbseLogoDataUri = "";
+  if (cbseLogoDataUri !== null) return cbseLogoDataUri || null;
+  // Try multiple paths to handle both local dev and Vercel serverless
+  const candidates = [
+    path.resolve(__dirname, "../assets/cbse.png"),
+    path.resolve(process.cwd(), "src/lib/pdf/assets/cbse.png"),
+    path.resolve(process.cwd(), "public/cbse.png"),
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        const buffer = fs.readFileSync(p);
+        cbseLogoDataUri = `data:image/png;base64,${buffer.toString("base64")}`;
+        return cbseLogoDataUri;
+      }
+    } catch { /* try next */ }
   }
-  return cbseLogoDataUri || null;
+  cbseLogoDataUri = "";
+  return null;
 }
 
 interface HeaderProps {

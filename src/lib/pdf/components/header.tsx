@@ -2,6 +2,22 @@ import React from "react";
 import { View, Text, Image, StyleSheet } from "@react-pdf/renderer";
 import { School, Grade, Subject, Chapter, TemplateTheme } from "@/types";
 import { PDF_FONT } from "../fonts";
+import * as path from "path";
+import * as fs from "fs";
+
+// CBSE logo — read once and cache as base64 data URI for @react-pdf/renderer
+let cbseLogoDataUri: string | null = null;
+function getCbseLogoUri(): string | null {
+  if (cbseLogoDataUri !== null) return cbseLogoDataUri;
+  try {
+    const logoPath = path.resolve(process.cwd(), "public/cbse.png");
+    const buffer = fs.readFileSync(logoPath);
+    cbseLogoDataUri = `data:image/png;base64,${buffer.toString("base64")}`;
+  } catch {
+    cbseLogoDataUri = "";
+  }
+  return cbseLogoDataUri || null;
+}
 
 interface HeaderProps {
   school: School;
@@ -14,10 +30,11 @@ interface HeaderProps {
 
 export function WorksheetHeader({ school, grade, subject, chapter, worksheetNumber, theme }: HeaderProps) {
   const styles = createStyles(theme);
+  const cbseLogo = getCbseLogoUri();
 
   return (
     <View style={styles.headerContainer}>
-      {/* Top row: Logo - School Name - Secondary Logo */}
+      {/* Top row: School Logo - School Name - CBSE Logo */}
       <View style={styles.topRow}>
         <View style={styles.logoCell}>
           {school.logo_url ? (
@@ -35,11 +52,13 @@ export function WorksheetHeader({ school, grade, subject, chapter, worksheetNumb
           <Text style={styles.worksheetTitle}>WORKSHEET-{worksheetNumber}</Text>
         </View>
         <View style={styles.logoCell}>
-          {school.logo_url ? (
+          {cbseLogo ? (
+            <Image src={cbseLogo} style={styles.logo} />
+          ) : school.logo_url ? (
             <Image src={school.logo_url} style={styles.logo} />
           ) : (
             <View style={styles.logoPlaceholder}>
-              <Text style={styles.logoText}>{school.name.charAt(0)}</Text>
+              <Text style={styles.logoText}>CBSE</Text>
             </View>
           )}
         </View>

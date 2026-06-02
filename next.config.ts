@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@react-pdf/renderer"],
   outputFileTracingIncludes: {
-    "/api/**/*": ["./src/lib/pdf/fonts/*.ttf"],
+    "/api/**/*": ["./src/lib/pdf/fonts/*.ttf", "./public/cbse.png"],
   },
   images: {
     remotePatterns: [

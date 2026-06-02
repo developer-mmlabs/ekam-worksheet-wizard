@@ -5,7 +5,7 @@ import { PDF_FONT } from "../fonts";
 const GRADE_BAND_STYLES: Record<GradeBand, { fontFamily: string; decorativeOpacity: number }> = {
   primary: { fontFamily: PDF_FONT, decorativeOpacity: 0.06 },
   middle: { fontFamily: PDF_FONT, decorativeOpacity: 0.05 },
-  senior: { fontFamily: PDF_FONT, decorativeOpacity: 0.04 },
+  senior: { fontFamily: PDF_FONT, decorativeOpacity: 0.06 },
 };
 
 // Grade-band decoration layout — controls density, size, and visual weight
@@ -39,17 +39,17 @@ export const GRADE_BAND_LAYOUTS: Record<GradeBand, DecorationLayout> = {
     colorMode: "duotone",
   },
   senior: {
-    cornerCount: 1,
-    cornerSize: 55,
+    cornerCount: 2,
+    cornerSize: 60,
     marginSide: "right",
-    marginIconCount: 5,
+    marginIconCount: 6,
     marginIconSize: 16,
-    patternGridSpacing: 120,
-    patternTileSize: 20,
-    patternOpacity: 0.025,
-    cornerOpacity: 0.07,
-    marginOpacity: 0.10,
-    strokeWidth: 1.2,
+    patternGridSpacing: 110,
+    patternTileSize: 22,
+    patternOpacity: 0.05,
+    cornerOpacity: 0.12,
+    marginOpacity: 0.15,
+    strokeWidth: 1.5,
     colorMode: "mono",
   },
 };

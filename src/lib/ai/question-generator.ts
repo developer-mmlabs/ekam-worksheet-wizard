@@ -1,5 +1,6 @@
 import { callLLM, createImageContent, createImageContentFromUrl, createTextContent } from "@/lib/openrouter";
 import { WorksheetQuestions, WorksheetConfigValues } from "@/types";
+import { chapterTitle, type ChapterSummary } from "@/lib/worksheet-scope";
 
 export interface GenerationContext {
   gradeNumber: number;
@@ -7,6 +8,8 @@ export interface GenerationContext {
   subjectSlug: string;
   subjectName: string;
   chapterName: string;
+  chapters?: ChapterSummary[];
+  sourcePageLabels?: string[];
 }
 
 // ============================================================
@@ -1001,6 +1004,9 @@ function buildSystemPrompt(ctx: GenerationContext, cfg: WorksheetConfigValues, s
     prompt += buildDeduplicationBlock(previousQuestions);
   }
 
+  if (ctx.chapters && ctx.chapters.length > 1) {
+    prompt += `\n\nMULTI-CHAPTER WORKSHEET:\nSelected chapters: ${chapterTitle(ctx.chapters)}.\nCreate ONE combined worksheet covering ALL selected chapters. Treat every reference above to "the chapter" as this complete selection. The configured question counts are TOTALS for the combined worksheet, never per chapter. Distribute questions as evenly as possible across the selected chapters, based only on their supplied source pages. Include each chapter, vary topics, and do not concentrate on the first chapter. Use a single sequence of sections in the requested order, not separate worksheets per chapter. If a section has fewer items than chapters, balance coverage across the worksheet as a whole. Set metadata.chapter to the full chapter list.`;
+  }
   return prompt;
 }
 
@@ -1031,7 +1037,7 @@ export async function generateQuestions(
     } else {
       contentParts.push(createImageContent(imageUrls[i]));
     }
-    contentParts.push(createTextContent(`[Page ${i + 1} of ${imageUrls.length}]`));
+    contentParts.push(createTextContent(context.sourcePageLabels?.[i] ?? `[Page ${i + 1} of ${imageUrls.length}]`));
   }
 
   if (imageUrls.length > maxImages) {
@@ -1067,6 +1073,10 @@ export async function generateQuestions(
   }, 0);
 
   questions.metadata.totalQuestions = totalQuestions;
+  if (context.chapters && context.chapters.length > 1) {
+    questions.metadata.chapters = context.chapters;
+    questions.metadata.chapter = chapterTitle(context.chapters);
+  }
 
   // Log count drift for Class 10 (where we ask for exact counts). With
   // dynamic section ordering, match by type instead of fixed indices.

@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS source_materials (
 CREATE TABLE IF NOT EXISTS worksheets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   chapter_id UUID NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+  chapter_ids UUID[],
   school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
   pdf_url TEXT,
   questions_json JSONB NOT NULL DEFAULT '{}',
@@ -78,7 +79,9 @@ CREATE INDEX IF NOT EXISTS idx_source_materials_chapter ON source_materials(chap
 CREATE INDEX IF NOT EXISTS idx_worksheets_chapter ON worksheets(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_worksheets_status ON worksheets(status);
 CREATE INDEX IF NOT EXISTS idx_worksheets_chapter_school ON worksheets(chapter_id, school_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_worksheets_unique_set ON worksheets(chapter_id, school_id, set_number) WHERE is_finalized = true;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_worksheets_unique_set ON worksheets(chapter_id, school_id, set_number) WHERE is_finalized = true AND chapter_ids IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_worksheets_multi_unique_set ON worksheets(school_id, chapter_ids, set_number) WHERE is_finalized = true AND chapter_ids IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_worksheets_multi_active_set ON worksheets(school_id, chapter_ids, set_number) WHERE chapter_ids IS NOT NULL AND status <> 'failed';
 
 -- Seed grades
 INSERT INTO grades (number, name, band) VALUES

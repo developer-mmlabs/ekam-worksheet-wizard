@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:queue": "npx --yes --ignore-scripts=false inngest-cli@latest dev --no-discovery",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:ui": "node --test tests/multi-chapter-ui.test.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

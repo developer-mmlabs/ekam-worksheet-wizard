@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase/client";
-import type { WorksheetStatus } from "@/types";
+import type { WorksheetStatus, WorksheetQuestions } from "@/types";
+import { chapterTitle } from "@/lib/worksheet-scope";
 
 interface WorksheetRow {
   id: string;
@@ -10,6 +11,7 @@ interface WorksheetRow {
   pdf_url: string | null;
   page_count: number;
   created_at: string;
+  metadata?: WorksheetQuestions["metadata"];
   chapter: {
     number: number;
     name: string;
@@ -46,7 +48,7 @@ export default function WorksheetsPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from("worksheets")
-      .select("id, status, pdf_url, page_count, created_at, chapter:chapters(number, name, subject:subjects(name, grade:grades(name)))")
+      .select("id, status, pdf_url, page_count, created_at, metadata:questions_json->metadata, chapter:chapters(number, name, subject:subjects(name, grade:grades(name)))")
       .order("created_at", { ascending: false });
 
     if (error || !data) {
@@ -146,7 +148,9 @@ export default function WorksheetsPage() {
                   <tr key={w.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <span className="text-sm font-medium text-gray-900">
-                        Ch {w.chapter?.number}: {w.chapter?.name}
+                        {w.metadata?.chapters?.length
+                          ? chapterTitle(w.metadata.chapters)
+                          : `Ch ${w.chapter?.number}: ${w.chapter?.name}`}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">

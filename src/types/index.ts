@@ -55,6 +55,7 @@ export type WorksheetStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export interface Worksheet {
   id: string;
   chapter_id: string;
+  chapter_ids?: string[] | null;
   school_id: string;
   pdf_url: string | null;
   questions_json: WorksheetQuestions;
@@ -76,6 +77,7 @@ export interface WorksheetQuestions {
     grade: string;
     subject: string;
     chapter: string;
+    chapters?: Pick<Chapter, "id" | "number" | "name">[];
     totalQuestions: number;
   };
   sections: QuestionSection[];
@@ -267,7 +269,8 @@ export type WorksheetConfigValues = Record<string, number>;
 // ============================================================
 
 export interface GenerateRequest {
-  chapterId: string;
+  chapterId?: string;
+  chapterIds?: string[];
   schoolId: string;
   config?: WorksheetConfigValues;
   sectionOrder?: string[]; // Control ids in the order the user wants the sections to appear

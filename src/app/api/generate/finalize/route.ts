@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { chapterArrayFilter, nextWorksheetSet } from "@/lib/worksheet-scope";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,7 +12,7 @@ export async function POST(req: NextRequest) {
 
     const { data: worksheet, error: fetchError } = await supabaseAdmin
       .from("worksheets")
-      .select("id, status, is_finalized, chapter_id, school_id, set_number")
+      .select("id, status, is_finalized, chapter_id, chapter_ids, school_id, set_number, pdf_url")
       .eq("id", worksheetId)
       .single();
 
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Worksheet is already finalized" }, { status: 400 });
     }
 
-    if (worksheet.status !== "completed") {
+    if (worksheet.status !== "completed" || !worksheet.pdf_url) {
       return NextResponse.json({
         success: false,
         error: "Only completed worksheets can be finalized",
@@ -41,24 +42,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Determine next available set number
-    const { data: allWorksheets } = await supabaseAdmin
+    let query = supabaseAdmin
       .from("worksheets")
       .select("set_number, is_finalized")
       .eq("chapter_id", worksheet.chapter_id)
       .eq("school_id", worksheet.school_id)
       .eq("is_finalized", true);
-
-    const finalizedSets = new Set((allWorksheets ?? []).map((w) => w.set_number));
-    // Include the one we just finalized
-    finalizedSets.add(worksheet.set_number);
-
-    let nextSetNumber: number | null = null;
-    for (let n = 1; n <= 3; n++) {
-      if (!finalizedSets.has(n)) {
-        nextSetNumber = n;
-        break;
-      }
-    }
+    query = worksheet.chapter_ids ? query.eq("chapter_ids", chapterArrayFilter(worksheet.chapter_ids)) : query.is("chapter_ids", null);
+    const { data: allWorksheets, error: setsError } = await query;
+    if (setsError) throw new Error("Worksheet finalized, but its set status could not be refreshed.");
+    const nextSetNumber = nextWorksheetSet(allWorksheets ?? []);
 
     return NextResponse.json({ success: true, nextSetNumber });
   } catch (error) {

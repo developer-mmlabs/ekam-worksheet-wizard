@@ -5,6 +5,7 @@ import { generateImage, isImageGenAvailable } from "@/lib/image-gen";
 import { generateWorksheetPDF } from "@/lib/pdf/generator";
 import { getTheme } from "@/lib/pdf/templates/themes";
 import { defaultConfigValues, getWorksheetConfigSpec } from "@/lib/worksheet-configs";
+import { chapterTitle, sampleChapterPages } from "@/lib/worksheet-scope";
 import type { Grade, Subject, Chapter, School, GradeBand, WorksheetConfigValues, WorksheetQuestions } from "@/types";
 
 // Shared failure handler — marks a worksheet as failed when the Inngest function crashes or times out
@@ -28,14 +29,16 @@ export const processWorksheet = inngest.createFunction(
     },
   },
   async ({ event, step }) => {
-    const { worksheetId, chapterId, schoolId, config: incomingConfig, sectionOrder, previousQuestions } = event.data as {
+    const { worksheetId, chapterId, chapterIds: requestedChapterIds, schoolId, config: incomingConfig, sectionOrder, previousQuestions } = event.data as {
       worksheetId: string;
       chapterId: string;
+      chapterIds?: string[];
       schoolId: string;
       config?: WorksheetConfigValues;
       sectionOrder?: string[];
       previousQuestions?: string[];
     };
+    const chapterIds = requestedChapterIds ?? [chapterId];
 
     // Step 1: Mark as processing and load all metadata
     const metadata = await step.run("load-metadata", async () => {
@@ -44,13 +47,15 @@ export const processWorksheet = inngest.createFunction(
         .update({ status: "processing" })
         .eq("id", worksheetId);
 
-      const { data: chapter, error: chapterError } = await supabaseAdmin
+      const { data: chapters, error: chapterError } = await supabaseAdmin
         .from("chapters")
         .select("*, subject:subjects(*, grade:grades(*))")
-        .eq("id", chapterId)
-        .single();
+        .in("id", chapterIds)
+        .order("number");
 
-      if (chapterError || !chapter) throw new Error("Chapter not found");
+      if (chapterError || !chapters || chapters.length !== chapterIds.length) throw new Error("Chapter not found");
+      const chapter = chapters[0];
+      if (chapters.some((item) => item.subject_id !== chapter.subject_id)) throw new Error("Chapters must share a grade and subject.");
 
       const { data: school, error: schoolError } = await supabaseAdmin
         .from("schools")
@@ -60,18 +65,17 @@ export const processWorksheet = inngest.createFunction(
 
       if (schoolError || !school) throw new Error("School not found");
 
-      const { data: materials } = await supabaseAdmin
-        .from("source_materials")
-        .select("*")
-        .eq("chapter_id", chapterId)
-        .order("type")
-        .order("page_number");
-
-      if (!materials || materials.length === 0) {
-        throw new Error("No source materials found for this chapter.");
-      }
-
-      return { chapter, school, materials };
+      const materialGroups = await Promise.all(chapters.map(async (item) => {
+        const { data, error } = await supabaseAdmin.from("source_materials").select("*")
+          .eq("chapter_id", item.id).order("type").order("page_number");
+        if (error || !data?.length) throw new Error(`No source pages available for Ch ${item.number}: ${item.name}.`);
+        return data;
+      }));
+      const sampledGroups = chapters.length > 1 ? sampleChapterPages(materialGroups) : materialGroups;
+      const materials = sampledGroups.flatMap((pages, i) => pages.map((page) => ({
+        ...page, sourceLabel: `Ch ${chapters[i].number}: ${chapters[i].name} - Page ${page.page_number}`,
+      })));
+      return { chapter, chapters: chapters.map(({ id, number, name }) => ({ id, number, name })), school, materials };
     });
 
     // Step 2: Download images + generate questions in a single step
@@ -100,7 +104,9 @@ export const processWorksheet = inngest.createFunction(
           gradeName: gradeData.name,
           subjectSlug: subjectData.slug,
           subjectName: subjectData.name,
-          chapterName: chapter.name as string,
+          chapterName: metadata.chapters.length > 1 ? chapterTitle(metadata.chapters) : chapter.name as string,
+          chapters: metadata.chapters.length > 1 ? metadata.chapters : undefined,
+          sourcePageLabels: metadata.materials.map((page) => page.sourceLabel),
         },
         config,
         sectionOrder,
@@ -183,12 +189,13 @@ export const processWorksheet = inngest.createFunction(
       const gradeName = gradeData.name.replace(/\s+/g, "-");
       const subjectSlug = subjectData.slug;
       const chapterLabel = `Ch${chapter.number}-${(chapter.name as string).replace(/[^a-zA-Z0-9]+/g, "-").replace(/-+$/, "")}`;
-      const timestamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
-      const pdfPath = `${schoolId}/${gradeName}/${subjectSlug}/${chapterLabel}-WS${worksheetNumber}-${timestamp}.pdf`;
+      const timestamp = new Date().toISOString().replace(/[T:.]/g, "-");
+      const pdfPath = `${schoolId}/${gradeName}/${subjectSlug}/${metadata.chapters.length > 1 ? "Multi-Chapter" : chapterLabel}-WS${worksheetNumber}-${worksheetId}-${timestamp}.pdf`;
 
       const { error: uploadError } = await supabaseAdmin.storage
         .from("worksheets")
-        .upload(pdfPath, buffer, { contentType: "application/pdf" });
+        .upload(pdfPath, buffer, { contentType: "application/pdf", upsert: true });
+      if (uploadError) throw new Error("Failed to upload worksheet PDF.");
 
       let pdfUrl: string | null = null;
       if (!uploadError) {
@@ -198,7 +205,7 @@ export const processWorksheet = inngest.createFunction(
         pdfUrl = publicUrl;
       }
 
-      await supabaseAdmin
+      const { error: saveError } = await supabaseAdmin
         .from("worksheets")
         .update({
           status: "completed",
@@ -207,6 +214,7 @@ export const processWorksheet = inngest.createFunction(
           page_count: Math.min(4, Math.ceil(questions.metadata.totalQuestions / 8)),
         })
         .eq("id", worksheetId);
+      if (saveError) throw new Error("Failed to save worksheet PDF.");
     });
 
     return { worksheetId, status: "completed" };
@@ -279,12 +287,13 @@ export const regeneratePDF = inngest.createFunction(
       const gradeName = gradeData.name.replace(/\s+/g, "-");
       const subjectSlug = subjectData.slug;
       const chapterLabel = `Ch${chapter.number}-${chapter.name.replace(/[^a-zA-Z0-9]+/g, "-").replace(/-+$/, "")}`;
-      const timestamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
-      const pdfPath = `${worksheet.school_id}/${gradeName}/${subjectSlug}/${chapterLabel}-WS${worksheetNumber}-${timestamp}.pdf`;
+      const timestamp = new Date().toISOString().replace(/[T:.]/g, "-");
+      const pdfPath = `${worksheet.school_id}/${gradeName}/${subjectSlug}/${questions.metadata.chapters?.length ? "Multi-Chapter" : chapterLabel}-WS${worksheetNumber}-${worksheetId}-${timestamp}.pdf`;
 
       const { error: uploadError } = await supabaseAdmin.storage
         .from("worksheets")
-        .upload(pdfPath, buffer, { contentType: "application/pdf" });
+        .upload(pdfPath, buffer, { contentType: "application/pdf", upsert: true });
+      if (uploadError) throw new Error("Failed to upload worksheet PDF.");
 
       let pdfUrl: string | null = null;
       if (!uploadError) {
@@ -294,7 +303,7 @@ export const regeneratePDF = inngest.createFunction(
         pdfUrl = publicUrl;
       }
 
-      await supabaseAdmin
+      const { error: saveError } = await supabaseAdmin
         .from("worksheets")
         .update({
           status: "completed",
@@ -302,6 +311,7 @@ export const regeneratePDF = inngest.createFunction(
           page_count: Math.min(4, Math.ceil(questions.metadata.totalQuestions / 8)),
         })
         .eq("id", worksheetId);
+      if (saveError) throw new Error("Failed to save worksheet PDF.");
     });
 
     return { worksheetId, status: "completed" };

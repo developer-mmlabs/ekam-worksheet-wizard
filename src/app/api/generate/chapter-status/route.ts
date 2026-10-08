@@ -1,37 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { ChapterStatusResponse } from "@/types";
+import { chapterArrayFilter, nextWorksheetSet, parseChapterSelection } from "@/lib/worksheet-scope";
 
 export async function GET(req: NextRequest) {
-  const chapterId = req.nextUrl.searchParams.get("chapterId");
+  let chapterIds: string[];
+  try {
+    const multi = req.nextUrl.searchParams.get("chapterIds");
+    chapterIds = parseChapterSelection(req.nextUrl.searchParams.get("chapterId"), multi === null ? undefined : multi.split(","));
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+  }
   const schoolId = req.nextUrl.searchParams.get("schoolId");
 
-  if (!chapterId || !schoolId) {
+  if (!schoolId) {
     return NextResponse.json({ error: "chapterId and schoolId are required" }, { status: 400 });
   }
 
-  const { data: worksheets, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("worksheets")
     .select("id, set_number, status, is_finalized, pdf_url, created_at")
-    .eq("chapter_id", chapterId)
+    .eq("chapter_id", chapterIds[0])
     .eq("school_id", schoolId)
     .order("set_number");
+  query = chapterIds.length > 1 ? query.eq("chapter_ids", chapterArrayFilter(chapterIds)) : query.is("chapter_ids", null);
+  const { data: worksheets, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: "Failed to fetch worksheets" }, { status: 500 });
   }
 
-  const finalizedSets = new Set(
-    (worksheets ?? []).filter((w) => w.is_finalized).map((w) => w.set_number)
-  );
-
-  let nextSetNumber: number | null = null;
-  for (let n = 1; n <= 3; n++) {
-    if (!finalizedSets.has(n)) {
-      nextSetNumber = n;
-      break;
-    }
-  }
+  const nextSetNumber = nextWorksheetSet(worksheets ?? []);
 
   const response: ChapterStatusResponse = {
     worksheets: (worksheets ?? []).map((w) => ({

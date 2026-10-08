@@ -16,6 +16,7 @@ import type {
   QuestionUpdate,
 } from "@/types";
 import { getWorksheetConfigSpec, defaultConfigValues } from "@/lib/worksheet-configs";
+import { MAX_CHAPTERS } from "@/lib/worksheet-scope";
 import {
   DndContext,
   closestCenter,
@@ -578,6 +579,7 @@ function ChatEditPanel({
 // ============================================================
 
 export default function GeneratePage() {
+  const [chapterMode, setChapterMode] = useState<"single" | "multi">("single");
   const [grades, setGrades] = useState<Grade[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -585,12 +587,21 @@ export default function GeneratePage() {
   const [selectedGrade, setSelectedGrade] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedChapter, setSelectedChapter] = useState("");
+  const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
+  const [chapterSearch, setChapterSearch] = useState("");
+  const [chaptersLoading, setChaptersLoading] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const statusRequestRef = useRef(0);
+  const selectionKey = chapterMode === "single" ? selectedChapter : [...selectedChapters].sort().join(",");
+  const hasChapter = chapterMode === "single" ? !!selectedChapter : selectedChapters.length >= 2;
 
   const [configValues, setConfigValues] = useState<WorksheetConfigValues>({});
   const [sectionOrder, setSectionOrder] = useState<string[]>([]);
   const [showOptions, setShowOptions] = useState(false);
 
   const [generating, setGenerating] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [openingEditor, setOpeningEditor] = useState(false);
   const [progress, setProgress] = useState("");
   const [activeWorksheetId, setActiveWorksheetId] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -608,6 +619,7 @@ export default function GeneratePage() {
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollingGenerationRef = useRef(0);
 
   const selectedGradeObj = useMemo(() => grades.find((g) => g.id === selectedGrade) ?? null, [grades, selectedGrade]);
   const selectedSubjectObj = useMemo(() => subjects.find((s) => s.id === selectedSubject) ?? null, [subjects, selectedSubject]);
@@ -656,6 +668,7 @@ export default function GeneratePage() {
   }, []);
 
   const stopPolling = useCallback(() => {
+    pollingGenerationRef.current++;
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
   }, []);
@@ -669,14 +682,27 @@ export default function GeneratePage() {
   }, []);
 
   const loadChapterStatus = useCallback(async () => {
-    if (!selectedChapter || !schoolId) { setChapterStatus(null); return; }
-    const res = await fetch(`/api/generate/chapter-status?chapterId=${selectedChapter}&schoolId=${schoolId}`);
-    if (res.ok) setChapterStatus(await res.json());
-  }, [selectedChapter, schoolId]);
+    const request = ++statusRequestRef.current;
+    if (!hasChapter || !schoolId) { setChapterStatus(null); setStatusLoading(false); return; }
+    setStatusLoading(true);
+    try {
+      const params = new URLSearchParams({ schoolId, [chapterMode === "single" ? "chapterId" : "chapterIds"]: selectionKey });
+      const res = await fetch(`/api/generate/chapter-status?${params}`);
+      if (!res.ok) throw new Error("Unable to load worksheet sets. Try selecting the chapters again.");
+      const data = await res.json();
+      if (request === statusRequestRef.current) setChapterStatus(data);
+    } catch (err) {
+      if (request === statusRequestRef.current) { setChapterStatus(null); setError((err as Error).message); }
+    } finally {
+      if (request === statusRequestRef.current) setStatusLoading(false);
+    }
+  }, [selectionKey, chapterMode, hasChapter, schoolId]);
 
   useEffect(() => { loadChapterStatus(); }, [loadChapterStatus]);
 
   function pollForCompletion(worksheetId: string, fast = false) {
+    stopPolling();
+    const pollingGeneration = pollingGenerationRef.current;
     // fast=true for edits/re-renders (poll every 3s), false for full generation (poll every 10s)
     const interval = fast ? 3_000 : 10_000;
     const timeout = fast ? 120_000 : 900_000;
@@ -686,6 +712,7 @@ export default function GeneratePage() {
         const res = await fetch(`/api/generate/status?id=${worksheetId}`);
         if (!res.ok) return;
         const data = await res.json();
+        if (pollingGeneration !== pollingGenerationRef.current) return;
         if (data.status === "pending") {
           setQueuePosition(data.queuePosition);
           setProgress("Waiting in queue...");
@@ -715,24 +742,41 @@ export default function GeneratePage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedGrade) { setSubjects([]); setSelectedSubject(""); return; }
-    (async () => { const { data } = await supabase.from("subjects").select("*").eq("grade_id", selectedGrade).order("name"); if (data) setSubjects(data); })();
+    let cancelled = false;
+    setSubjects([]);
+    if (!selectedGrade) return;
+    (async () => {
+      const { data, error } = await supabase.from("subjects").select("*").eq("grade_id", selectedGrade).order("name");
+      if (!cancelled) { if (error) setError("Unable to load subjects."); else setSubjects(data ?? []); }
+    })();
+    return () => { cancelled = true; };
   }, [selectedGrade]);
 
   useEffect(() => {
-    if (!selectedSubject) { setChapters([]); setSelectedChapter(""); return; }
-    (async () => { const { data } = await supabase.from("chapters").select("*").eq("subject_id", selectedSubject).order("number"); if (data) setChapters(data); })();
+    let cancelled = false;
+    setChapters([]);
+    if (!selectedSubject) { setChaptersLoading(false); return; }
+    setChaptersLoading(true);
+    (async () => {
+      const { data, error } = await supabase.from("chapters").select("*").eq("subject_id", selectedSubject).order("number");
+      if (!cancelled) { if (error) setError("Unable to load chapters."); else setChapters(data ?? []); setChaptersLoading(false); }
+    })();
+    return () => { cancelled = true; };
   }, [selectedSubject]);
 
-  function resetView() { setPdfUrl(null); setActiveWorksheetId(null); setActiveSetNumber(null); setIsFinalized(false); setError(null); }
+  function resetView() {
+    statusRequestRef.current++;
+    setChapterStatus(null); setStatusLoading(false);
+    setPdfUrl(null); setActiveWorksheetId(null); setActiveSetNumber(null); setIsFinalized(false); setError(null);
+  }
 
   async function handleGenerate() {
-    if (!selectedChapter || !schoolId) return;
+    if (!canGenerate || !schoolId) return;
     setGenerating(true); setError(null); setPdfUrl(null); setQueuePosition(null); setProgress("Submitting...");
     try {
       const response = await fetch("/api/generate", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chapterId: selectedChapter, schoolId, config: configValues, sectionOrder }),
+        body: JSON.stringify({ ...(chapterMode === "single" ? { chapterId: selectedChapter } : { chapterIds: selectedChapters }), schoolId, config: configValues, sectionOrder }),
       });
       if (!response.ok) {
         let msg = `Server error (${response.status})`;
@@ -749,7 +793,8 @@ export default function GeneratePage() {
   }
 
   async function handleFinalize() {
-    if (!activeWorksheetId) return;
+    if (!activeWorksheetId || finalizing) return;
+    setFinalizing(true);
     try {
       const res = await fetch("/api/generate/finalize", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -758,23 +803,30 @@ export default function GeneratePage() {
       if (!res.ok) { const err = await res.json(); setError(err.error || "Finalization failed"); return; }
       setIsFinalized(true); loadChapterStatus();
     } catch { setError("Network error"); }
+    finally { setFinalizing(false); }
   }
 
   async function openModal(type: "edit" | "chat") {
-    if (!activeWorksheetId) return;
-    const res = await fetch(`/api/generate/status?id=${activeWorksheetId}&include=questions`);
-    if (res.ok) {
+    if (!activeWorksheetId || openingEditor) return;
+    setOpeningEditor(true);
+    try {
+      const res = await fetch(`/api/generate/status?id=${activeWorksheetId}&include=questions`);
+      if (!res.ok) throw new Error("Unable to load questions");
       const data = await res.json();
       if (data.questionsJson) {
         setEditQuestionsJson(data.questionsJson);
         if (type === "edit") setShowEditModal(true);
         else setShowChatPanel(true);
       }
-    }
+    } catch { setError("Unable to load worksheet questions. Please try again."); }
+    finally { setOpeningEditor(false); }
   }
 
   function handleViewWorksheet(slot: WorksheetSlot) {
+    if (generating || finalizing || openingEditor) return;
     setActiveWorksheetId(slot.id); setPdfUrl(slot.pdfUrl); setActiveSetNumber(slot.setNumber); setIsFinalized(slot.isFinalized); setError(null);
+    if (slot.status === "pending" || slot.status === "processing") { setGenerating(true); setProgress("Waiting for your worksheet..."); pollForCompletion(slot.id); }
+    if (slot.status === "failed") setError("This worksheet failed to generate. Please generate it again.");
   }
 
   function handleModalSaved() {
@@ -783,8 +835,9 @@ export default function GeneratePage() {
   }
 
   const allFinalized = chapterStatus?.nextSetNumber === null && (chapterStatus?.worksheets.length ?? 0) > 0;
-  const canGenerate = selectedChapter && schoolId && !generating && !allFinalized;
-  const hasChapter = !!selectedChapter;
+  const busy = generating || finalizing || openingEditor;
+  const canGenerate = hasChapter && schoolId && chapterStatus && !statusLoading && !busy && !allFinalized && totalQuestions > 0;
+  const visibleChapters = chapters.filter((chapter) => `Ch ${chapter.number}: ${chapter.name}`.toLowerCase().includes(chapterSearch.toLowerCase()));
 
   return (
     <div className="h-[calc(100vh-49px)] flex flex-col lg:flex-row">
@@ -793,83 +846,146 @@ export default function GeneratePage() {
         <div className="p-6 space-y-5">
           <div>
             <h1 className="text-lg font-semibold text-gray-900">Generate Worksheet</h1>
-            <p className="text-xs text-gray-400 mt-1">Select a chapter to create a set of 3 unique worksheets.</p>
+            <p className="text-xs text-gray-500 mt-1">Choose Single Chapter or Multi Chapter to get started.</p>
           </div>
 
-          {/* Selectors */}
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Grade</label>
-              <select value={selectedGrade} onChange={(e) => { setSelectedGrade(e.target.value); setSelectedSubject(""); setSelectedChapter(""); resetView(); }}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white">
-                <option value="">Select grade...</option>
-                {grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Subject</label>
-              <select value={selectedSubject} onChange={(e) => { setSelectedSubject(e.target.value); setSelectedChapter(""); resetView(); }} disabled={!selectedGrade}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white disabled:bg-gray-50 disabled:text-gray-400">
-                <option value="">{selectedGrade ? "Select subject..." : "Select grade first"}</option>
-                {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Chapter</label>
-              <select value={selectedChapter} onChange={(e) => { setSelectedChapter(e.target.value); resetView(); }} disabled={!selectedSubject}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white disabled:bg-gray-50 disabled:text-gray-400">
-                <option value="">{selectedSubject ? "Select chapter..." : "Select subject first"}</option>
-                {chapters.map((c) => <option key={c.id} value={c.id}>Ch {c.number}: {c.name}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* Set Progress */}
-          {chapterStatus && chapterStatus.worksheets.length > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-2">Worksheet Set</label>
-              <SetStepper
-                slots={chapterStatus.worksheets}
-                nextSetNumber={chapterStatus.nextSetNumber}
-                activeSetNumber={activeSetNumber}
-                onSelect={handleViewWorksheet}
-              />
-            </div>
-          )}
-
-          {/* Question Options */}
-          {hasChapter && configSpec && !allFinalized && (
-            <div>
-              <button type="button" onClick={() => setShowOptions(!showOptions)}
-                className="flex items-center justify-between w-full text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors">
-                <span>Questions ({totalQuestions})</span>
-                <svg className={`w-3.5 h-3.5 transition-transform ${showOptions ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
+          <div role="group" aria-label="Chapter mode" className="flex gap-2">
+            {(["single", "multi"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={chapterMode === mode}
+                disabled={busy}
+                onClick={() => { if (mode !== chapterMode) { setChapterMode(mode); resetView(); } }}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                  chapterMode === mode
+                    ? "border-blue-600 bg-blue-600 text-white"
+                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {mode === "single" ? "Single Chapter" : "Multi Chapter"}
               </button>
-              {showOptions && (
-                <div className="mt-2 space-y-1">
-                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                    <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
-                      {orderedControls.map((control) => (
-                        <SortableControlRow key={control.id} control={control} value={configValues[control.id] ?? control.default} onChange={(n) => setConfigValues((prev) => ({ ...prev, [control.id]: n }))} />
-                      ))}
-                    </SortableContext>
-                  </DndContext>
-                </div>
+            ))}
+          </div>
+
+          <fieldset disabled={busy} className="space-y-5 min-w-0">
+            <p className="text-xs text-gray-500">{chapterMode === "single"
+              ? "Select a chapter to create a set of 3 unique worksheets."
+              : "Select two or more chapters from one subject to create 3 combined worksheets, one at a time."}</p>
+            {/* Selectors */}
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="worksheet-grade" className="block text-xs font-medium text-gray-500 mb-1">Grade</label>
+                <select id="worksheet-grade" value={selectedGrade} onChange={(e) => { setSelectedGrade(e.target.value); setSelectedSubject(""); setSelectedChapter(""); setSelectedChapters([]); setChapterSearch(""); resetView(); }}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white">
+                  <option value="">Select grade...</option>
+                  {grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="worksheet-subject" className="block text-xs font-medium text-gray-500 mb-1">Subject</label>
+                <select id="worksheet-subject" value={selectedSubject} onChange={(e) => { setSelectedSubject(e.target.value); setSelectedChapter(""); setSelectedChapters([]); setChapterSearch(""); resetView(); }} disabled={!selectedGrade}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white disabled:bg-gray-50 disabled:text-gray-400">
+                  <option value="">{selectedGrade ? "Select subject..." : "Select grade first"}</option>
+                  {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              {chapterMode === "single" ? <div>
+                <label htmlFor="worksheet-chapter" className="block text-xs font-medium text-gray-500 mb-1">Chapter</label>
+                <select id="worksheet-chapter" value={selectedChapter} onChange={(e) => { setSelectedChapter(e.target.value); resetView(); }} disabled={!selectedSubject || chaptersLoading}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white disabled:bg-gray-50 disabled:text-gray-400">
+                  <option value="">{selectedSubject ? "Select chapter..." : "Select subject first"}</option>
+                  {chapters.map((c) => <option key={c.id} value={c.id}>Ch {c.number}: {c.name}</option>)}
+                </select>
+              </div> : (
+                <fieldset aria-describedby="chapter-selection-help" className="min-w-0">
+                  <legend className="text-xs font-medium text-gray-500 mb-1">Chapters</legend>
+                  {!selectedSubject || chaptersLoading || chapters.length === 0 ? (
+                    <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-500">
+                      {!selectedSubject ? "Select a subject first" : chaptersLoading ? "Loading chapters..." : "No chapters available for this subject."}
+                    </p>
+                  ) : (
+                    <div className="overflow-hidden rounded-lg border border-gray-200">
+                      <div className="border-b border-gray-100 p-2">
+                        <input aria-label="Search chapters" type="search" placeholder="Search chapters..." value={chapterSearch} onChange={(event) => setChapterSearch(event.target.value)}
+                          className="w-full rounded-md border border-gray-200 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                        <div className="mt-2 flex items-center justify-between gap-2 px-1 text-xs">
+                          <span aria-live="polite" className="font-medium text-gray-600">{selectedChapters.length} selected</span>
+                          <button type="button" disabled={selectedChapters.length === 0} onClick={() => { setSelectedChapters([]); resetView(); }} className="text-blue-600 hover:underline disabled:text-gray-400">Clear selection</button>
+                        </div>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto p-1">
+                        {visibleChapters.map((chapter) => {
+                          const checked = selectedChapters.includes(chapter.id);
+                          return (
+                            <label key={chapter.id} className={`flex min-h-11 cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2.5 text-sm ${checked ? "bg-blue-50 text-blue-900" : "text-gray-700 hover:bg-gray-50"}`}>
+                              <input type="checkbox" checked={checked} disabled={!checked && selectedChapters.length >= MAX_CHAPTERS}
+                                onChange={() => { setSelectedChapters((ids) => checked ? ids.filter((id) => id !== chapter.id) : [...ids, chapter.id]); resetView(); }}
+                                className="mt-0.5 h-4 w-4 shrink-0 accent-blue-600 focus-visible:outline-blue-600" />
+                              <span>Ch {chapter.number}: {chapter.name}</span>
+                            </label>
+                          );
+                        })}
+                        {visibleChapters.length === 0 && <p className="p-3 text-xs text-gray-500">No chapters match your search.</p>}
+                      </div>
+                    </div>
+                  )}
+                  <p id="chapter-selection-help" className="mt-2 text-xs text-gray-500">{selectedChapters.length === MAX_CHAPTERS ? `Maximum ${MAX_CHAPTERS} chapters selected.` : selectedChapters.length < 2 ? "Select at least 2 chapters. Question counts apply to the whole worksheet." : "Questions will be shared across all selected chapters."}</p>
+                </fieldset>
               )}
             </div>
-          )}
 
-          {/* Generate */}
-          <button onClick={handleGenerate} disabled={!canGenerate}
-            className="w-full bg-gray-900 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 transition-colors">
-            {generating ? "Generating..." : allFinalized ? "All 3 Finalized" : chapterStatus?.nextSetNumber ? `Generate Set ${chapterStatus.nextSetNumber}` : "Generate Worksheet"}
-          </button>
+            {/* Set Progress */}
+            {chapterStatus && chapterStatus.worksheets.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-2">Worksheet Set</label>
+                <SetStepper
+                  slots={chapterStatus.worksheets}
+                  nextSetNumber={chapterStatus.nextSetNumber}
+                  activeSetNumber={activeSetNumber}
+                  onSelect={handleViewWorksheet}
+                />
+              </div>
+            )}
 
-          {error && (
-            <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
-          )}
+            {/* Question Options */}
+            {hasChapter && configSpec && !allFinalized && (
+              <div>
+                <button type="button" onClick={() => setShowOptions(!showOptions)}
+                  className="flex items-center justify-between w-full text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors">
+                  <span>Questions ({totalQuestions})</span>
+                  <svg className={`w-3.5 h-3.5 transition-transform ${showOptions ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showOptions && (
+                  <div className="mt-2 space-y-1">
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                      <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
+                        {orderedControls.map((control) => (
+                          <SortableControlRow key={control.id} control={control} value={configValues[control.id] ?? control.default} onChange={(n) => setConfigValues((prev) => ({ ...prev, [control.id]: n }))} />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Generate */}
+            <button onClick={handleGenerate} disabled={!canGenerate}
+              className="w-full bg-gray-900 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 transition-colors">
+              {generating ? "Generating..." : statusLoading ? "Checking worksheet sets..." : allFinalized ? "All 3 Finalized" : chapterStatus?.nextSetNumber ? `Generate Set ${chapterStatus.nextSetNumber}` : "Generate Worksheet"}
+            </button>
+
+            {error && (
+              <div role="alert" className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+                <p>{error}</p>
+                {hasChapter && !chapterStatus && !statusLoading && <button type="button" className="mt-1 font-medium underline" onClick={() => { setError(null); loadChapterStatus(); }}>Retry loading worksheet sets</button>}
+              </div>
+            )}
+            {hasChapter && totalQuestions === 0 && <p className="text-xs text-gray-500">Add at least one question in Questions to generate a worksheet.</p>}
+          </fieldset>
         </div>
       </div>
 
@@ -890,21 +1006,21 @@ export default function GeneratePage() {
             <div className="flex items-center gap-1.5">
               {!isFinalized && (
                 <>
-                  <button onClick={() => openModal("chat")} title="Edit with AI"
+                  <button onClick={() => openModal("chat")} disabled={busy} title="Edit with AI"
                     className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-50 px-3 py-1.5 rounded-lg transition-colors">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                     AI Edit
                   </button>
-                  <button onClick={() => openModal("edit")} title="Manual edit"
+                  <button onClick={() => openModal("edit")} disabled={busy} title="Manual edit"
                     className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-50 px-3 py-1.5 rounded-lg transition-colors">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                     Manual
                   </button>
                   <div className="w-px h-5 bg-gray-200 mx-1" />
-                  <button onClick={handleFinalize}
+                  <button onClick={handleFinalize} disabled={busy}
                     className="inline-flex items-center gap-1.5 text-sm text-green-700 hover:bg-green-50 px-3 py-1.5 rounded-lg font-medium transition-colors">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                    Finalize
+                    {finalizing ? "Finalizing..." : "Finalize"}
                   </button>
                 </>
               )}
@@ -935,7 +1051,7 @@ export default function GeneratePage() {
               <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={0.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              <p className="text-sm">{hasChapter ? "Generate a worksheet to preview it here" : "Select a chapter to get started"}</p>
+              <p className="text-sm">{hasChapter ? "Generate a worksheet to preview it here" : chapterMode === "multi" ? "Select two or more chapters to get started" : "Select a chapter to get started"}</p>
             </div>
           )}
         </div>

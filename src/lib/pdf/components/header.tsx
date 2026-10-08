@@ -33,11 +33,12 @@ interface HeaderProps {
   grade: Grade;
   subject: Subject;
   chapter: Chapter;
+  chapterLabel?: string;
   worksheetNumber: number;
   theme: TemplateTheme;
 }
 
-export function WorksheetHeader({ school, grade, subject, chapter, worksheetNumber, theme }: HeaderProps) {
+export function WorksheetHeader({ school, grade, subject, chapter, chapterLabel, worksheetNumber, theme }: HeaderProps) {
   const styles = createStyles(theme);
   const cbseLogo = getCbseLogoUri();
 
@@ -80,7 +81,7 @@ export function WorksheetHeader({ school, grade, subject, chapter, worksheetNumb
         </View>
         <View style={styles.infoCellWide}>
           <Text style={styles.infoLabel}>
-            C-{chapter.number}, {chapter.name.toUpperCase()}
+            {(chapterLabel ?? `C-${chapter.number}, ${chapter.name}`).toUpperCase()}
           </Text>
         </View>
         <View style={styles.infoCell}>

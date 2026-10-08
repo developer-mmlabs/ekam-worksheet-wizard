@@ -1,4 +1,5 @@
 import React from "react";
+import { worksheetChapterTitle } from "@/lib/worksheet-scope";
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import { WorksheetPDFData, QuestionSection } from "@/types";
 import { WorksheetHeader } from "./components/header";
@@ -229,9 +230,9 @@ function WorksheetDocument({ data }: WorksheetDocumentProps) {
 
   return (
     <Document
-      title={`Worksheet - ${subject.name} - ${chapter.name}`}
+      title={`Worksheet - ${subject.name} - ${worksheetChapterTitle(questions, chapter)}`}
       author={school.name}
-      subject={`${grade.name} ${subject.name} - ${chapter.name}`}
+      subject={`${grade.name} ${subject.name} - ${worksheetChapterTitle(questions, chapter)}`}
     >
       {/* Page 1: Full header + questions */}
       <Page size="A4" style={styles.page} wrap>
@@ -243,6 +244,7 @@ function WorksheetDocument({ data }: WorksheetDocumentProps) {
           grade={grade}
           subject={subject}
           chapter={chapter}
+          chapterLabel={worksheetChapterTitle(questions, chapter)}
           worksheetNumber={worksheetNumber}
           theme={theme}
         />

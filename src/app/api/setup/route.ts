@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+function multiChapterMigration() {
+  return readFileSync(path.join(process.cwd(), "supabase/migrations/20261008_multi_chapter.sql"), "utf8")
+    .replace(/^(BEGIN|COMMIT);\r?$/gm, "");
+}
 
 // SQL to create all tables
 const SCHEMA_SQL = `
@@ -167,7 +174,7 @@ export async function POST() {
 
     // Step 2b: Run migrations (safe to run on existing databases)
     const { error: migrationError } = await supabaseAdmin.rpc("exec_sql", {
-      query: MIGRATION_SQL,
+      query: MIGRATION_SQL + multiChapterMigration(),
     });
     if (migrationError) {
       results.push(`Migrations: ${migrationError.message}`);
@@ -228,6 +235,9 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 ${SCHEMA_SQL}
+
+${MIGRATION_SQL}
+${multiChapterMigration()}
 
 ${SEED_GRADES_SQL}
 

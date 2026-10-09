@@ -1000,6 +1000,10 @@ function buildSystemPrompt(ctx: GenerationContext, cfg: WorksheetConfigValues, s
     prompt = buildGenericPrompt(cfg, sectionOrder);
   }
 
+  if (ctx.subjectSlug === "hindi") {
+    prompt += "\n\nHINDI LANGUAGE: Write all section titles, instructions, passages, questions, and option text in natural Hindi using Devanagari script, appropriate for the selected grade. Do not transliterate Hindi into Latin letters. Keep JSON field names, section IDs, option labels, and mathematical symbols unchanged.";
+  }
+
   if (previousQuestions && previousQuestions.length > 0) {
     prompt += buildDeduplicationBlock(previousQuestions);
   }

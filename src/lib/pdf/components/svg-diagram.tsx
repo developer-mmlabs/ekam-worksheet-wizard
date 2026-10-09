@@ -7,6 +7,7 @@ interface SvgDiagramBlockProps {
   diagram: SvgDiagram;
   width?: number;
   height?: number;
+  fontFamily?: string | string[];
 }
 
 // ============================================================
@@ -15,15 +16,15 @@ interface SvgDiagramBlockProps {
 // control the printed size in points.
 // ============================================================
 
-export function SvgDiagramBlock({ diagram, width = 120, height = 120 }: SvgDiagramBlockProps) {
+export function SvgDiagramBlock({ diagram, width = 120, height = 120, fontFamily = PDF_FONT }: SvgDiagramBlockProps) {
   return (
     <Svg width={width} height={height} viewBox={diagram.viewBox}>
-      {diagram.shapes.map((shape, i) => renderShape(shape, i))}
+      {diagram.shapes.map((shape, i) => renderShape(shape, i, fontFamily))}
     </Svg>
   );
 }
 
-function renderShape(shape: SvgShape, key: number) {
+function renderShape(shape: SvgShape, key: number, fontFamily: string | string[]) {
   switch (shape.type) {
     case "circle":
       return (
@@ -91,7 +92,7 @@ function renderShape(shape: SvgShape, key: number) {
           y={shape.y}
           textAnchor={shape.textAnchor ?? "start"}
           fill={shape.fill ?? "#1f2937"}
-          style={{ fontSize: shape.fontSize ?? 10, fontFamily: PDF_FONT }}
+          style={{ fontSize: shape.fontSize ?? 10, fontFamily }}
         >
           {shape.text}
         </SvgText>

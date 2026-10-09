@@ -2,7 +2,6 @@ import React from "react";
 import { View, Text, Image, StyleSheet } from "@react-pdf/renderer";
 import { QuestionSection, Question, CaseStudy, TemplateTheme } from "@/types";
 import { SvgDiagramBlock } from "./svg-diagram";
-import { PDF_FONT } from "../fonts";
 
 interface SectionProps {
   section: QuestionSection;
@@ -32,7 +31,7 @@ export function QuestionSectionBlock({ section, theme }: SectionProps) {
 
       {section.type === "case_study" && section.caseStudies
         ? section.caseStudies.map((cs) => (
-            <CaseStudyBlock key={cs.number} caseStudy={cs} styles={styles} />
+            <CaseStudyBlock key={cs.number} caseStudy={cs} styles={styles} theme={theme} />
           ))
         : section.questions?.map((question) => (
             <QuestionBlock
@@ -40,13 +39,14 @@ export function QuestionSectionBlock({ section, theme }: SectionProps) {
               question={question}
               isAssertionReason={section.type === "assertion_reason"}
               styles={styles}
+              hindi={theme.subject === "hindi"}
             />
           ))}
     </View>
   );
 }
 
-function CaseStudyBlock({ caseStudy, styles }: { caseStudy: CaseStudy; styles: Styles }) {
+function CaseStudyBlock({ caseStudy, styles, theme }: { caseStudy: CaseStudy; styles: Styles; theme: TemplateTheme }) {
   // Priority: SVG diagram (math-exact) > AI-generated image > text-only
   const hasSvg = Boolean(caseStudy.imageSvg?.shapes?.length);
   const hasImage = !hasSvg && Boolean(caseStudy.imageUrl);
@@ -54,7 +54,7 @@ function CaseStudyBlock({ caseStudy, styles }: { caseStudy: CaseStudy; styles: S
 
   return (
     <View style={styles.caseStudyBlock} wrap={false}>
-      <Text style={styles.caseStudyLabel}>Case Study {caseStudy.number}</Text>
+      <Text style={styles.caseStudyLabel}>{theme.subject === "hindi" ? "पाठ्यांश" : "Case Study"} {caseStudy.number}</Text>
       {hasVisual ? (
         <View style={styles.caseStudyImageRow}>
           <View style={styles.caseStudyTextCol}>
@@ -62,7 +62,7 @@ function CaseStudyBlock({ caseStudy, styles }: { caseStudy: CaseStudy; styles: S
           </View>
           {hasSvg ? (
             <View style={styles.caseStudyImage}>
-              <SvgDiagramBlock diagram={caseStudy.imageSvg!} width={110} height={110} />
+              <SvgDiagramBlock diagram={caseStudy.imageSvg!} width={110} height={110} fontFamily={theme.fontFamily} />
             </View>
           ) : (
             <Image src={caseStudy.imageUrl!} style={styles.caseStudyImage} />
@@ -77,6 +77,7 @@ function CaseStudyBlock({ caseStudy, styles }: { caseStudy: CaseStudy; styles: S
           question={q}
           isAssertionReason={false}
           styles={styles}
+          hindi={theme.subject === "hindi"}
         />
       ))}
     </View>
@@ -87,10 +88,12 @@ function QuestionBlock({
   question,
   isAssertionReason,
   styles,
+  hindi,
 }: {
   question: Question;
   isAssertionReason: boolean;
   styles: Styles;
+  hindi: boolean;
 }) {
   const hasLongOptions = question.options?.some((opt) => opt.text.length > 25) ?? false;
 
@@ -102,11 +105,11 @@ function QuestionBlock({
           {isAssertionReason && question.assertion ? (
             <>
               <Text style={styles.questionText}>
-                <Text style={styles.arLabel}>Assertion (A): </Text>
+                <Text style={styles.arLabel}>{hindi ? "कथन (A): " : "Assertion (A): "}</Text>
                 {question.assertion}
               </Text>
               <Text style={styles.questionText}>
-                <Text style={styles.arLabel}>Reason (R): </Text>
+                <Text style={styles.arLabel}>{hindi ? "कारण (R): " : "Reason (R): "}</Text>
                 {question.reason}
               </Text>
             </>
@@ -130,8 +133,8 @@ function QuestionBlock({
           {question.matchPairs && question.matchPairs.length > 0 && (
             <View style={styles.matchTable}>
               <View style={styles.matchHeaderRow}>
-                <Text style={styles.matchColumnHeader}>Column A</Text>
-                <Text style={styles.matchColumnHeader}>Column B</Text>
+                <Text style={styles.matchColumnHeader}>{hindi ? "स्तंभ अ" : "Column A"}</Text>
+                <Text style={styles.matchColumnHeader}>{hindi ? "स्तंभ ब" : "Column B"}</Text>
               </View>
               {question.matchPairs.map((pair, idx) => (
                 <View key={idx} style={styles.matchRow}>
@@ -160,6 +163,8 @@ function QuestionBlock({
 type Styles = ReturnType<typeof createStyles>;
 
 function createStyles(theme: TemplateTheme) {
+  const hindi = theme.subject === "hindi";
+  const lineHeight = hindi ? 1.5 : 1.3;
   return StyleSheet.create({
     sectionContainer: {
       marginBottom: 6,
@@ -178,21 +183,21 @@ function createStyles(theme: TemplateTheme) {
     sectionTitle: {
       fontSize: 11,
       fontWeight: "bold",
-      fontFamily: PDF_FONT,
+      fontFamily: theme.fontFamily,
       color: theme.sectionHeaderColor,
     },
     marksLabel: {
       fontSize: 7,
       color: "#666666",
-      fontStyle: "italic",
+      fontStyle: hindi ? "normal" : "italic",
     },
     instructions: {
       fontSize: 8,
-      fontStyle: "italic",
+      fontStyle: hindi ? "normal" : "italic",
       color: "#444444",
       paddingHorizontal: 4,
       paddingBottom: 3,
-      lineHeight: 1.3,
+      lineHeight,
     },
     questionBlock: {
       marginBottom: 3,
@@ -206,7 +211,7 @@ function createStyles(theme: TemplateTheme) {
       width: 26,
       fontSize: 8.5,
       fontWeight: "bold",
-      fontFamily: PDF_FONT,
+      fontFamily: theme.fontFamily,
       textAlign: "right",
       paddingRight: 4,
       paddingTop: 1,
@@ -216,11 +221,11 @@ function createStyles(theme: TemplateTheme) {
     },
     questionText: {
       fontSize: 8.5,
-      lineHeight: 1.3,
-      fontFamily: PDF_FONT,
+      lineHeight,
+      fontFamily: theme.fontFamily,
     },
     arLabel: {
-      fontFamily: PDF_FONT,
+      fontFamily: theme.fontFamily,
       fontWeight: "bold",
     },
     caseStudyBlock: {
@@ -233,16 +238,16 @@ function createStyles(theme: TemplateTheme) {
     },
     caseStudyLabel: {
       fontSize: 9,
-      fontFamily: PDF_FONT,
+      fontFamily: theme.fontFamily,
       fontWeight: "bold",
       color: theme.sectionHeaderColor,
       marginBottom: 2,
     },
     caseStudyStimulus: {
       fontSize: 8.5,
-      fontStyle: "italic",
-      lineHeight: 1.35,
-      fontFamily: PDF_FONT,
+      fontStyle: hindi ? "normal" : "italic",
+      lineHeight: hindi ? 1.5 : 1.35,
+      fontFamily: theme.fontFamily,
       paddingBottom: 3,
     },
     caseStudyImageRow: {
@@ -270,15 +275,15 @@ function createStyles(theme: TemplateTheme) {
     option: {
       width: "25%",
       fontSize: 8,
-      lineHeight: 1.3,
-      fontFamily: PDF_FONT,
+      lineHeight,
+      fontFamily: theme.fontFamily,
       paddingRight: 4,
     },
     optionWide: {
       width: "50%",
       fontSize: 8,
-      lineHeight: 1.3,
-      fontFamily: PDF_FONT,
+      lineHeight,
+      fontFamily: theme.fontFamily,
       paddingRight: 4,
     },
     matchTable: {
@@ -297,7 +302,7 @@ function createStyles(theme: TemplateTheme) {
     matchColumnHeader: {
       width: "50%",
       fontSize: 7.5,
-      fontFamily: PDF_FONT,
+      fontFamily: theme.fontFamily,
       fontWeight: "bold",
       paddingHorizontal: 4,
       paddingVertical: 2,
@@ -310,8 +315,8 @@ function createStyles(theme: TemplateTheme) {
     matchCell: {
       width: "50%",
       fontSize: 8,
-      lineHeight: 1.3,
-      fontFamily: PDF_FONT,
+      lineHeight,
+      fontFamily: theme.fontFamily,
       paddingHorizontal: 4,
       paddingVertical: 1.5,
     },
@@ -321,8 +326,8 @@ function createStyles(theme: TemplateTheme) {
     },
     subpart: {
       fontSize: 8.5,
-      lineHeight: 1.3,
-      fontFamily: PDF_FONT,
+      lineHeight,
+      fontFamily: theme.fontFamily,
     },
   });
 }

@@ -1,5 +1,5 @@
 import { GradeBand, TemplateTheme, DecorationLayout } from "@/types";
-import { PDF_FONT } from "../fonts";
+import { PDF_FONT, pdfFontForSubject } from "../fonts";
 
 // Grade band base styles
 const GRADE_BAND_STYLES: Record<GradeBand, { fontFamily: string; decorativeOpacity: number }> = {
@@ -193,7 +193,7 @@ export function getTheme(
       backgroundColor: lighten(schoolColors.primary, 0.93),
       headerColor: darken(schoolColors.primary, 0.35),
       sectionHeaderColor: darken(schoolColors.primary, 0.15),
-      fontFamily: bandStyle.fontFamily,
+      fontFamily: pdfFontForSubject(subjectSlug),
       decorativeOpacity: bandStyle.decorativeOpacity,
       decorationLayout: layout,
     };
@@ -209,7 +209,7 @@ export function getTheme(
     backgroundColor: colors.bg,
     headerColor: colors.header,
     sectionHeaderColor: colors.sectionHeader,
-    fontFamily: bandStyle.fontFamily,
+    fontFamily: pdfFontForSubject(subjectSlug),
     decorativeOpacity: bandStyle.decorativeOpacity,
     decorationLayout: layout,
   };

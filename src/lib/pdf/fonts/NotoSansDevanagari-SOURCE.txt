@@ -1,0 +1,9 @@
+Noto Sans Devanagari Regular and Bold, version 2.007 (full static TTF builds).
+Downloaded from the Noto project's official build site:
+https://notofonts.github.io/devanagari/fonts/NotoSansDevanagari/full/ttf/NotoSansDevanagari-Regular.ttf
+https://notofonts.github.io/devanagari/fonts/NotoSansDevanagari/full/ttf/NotoSansDevanagari-Bold.ttf
+License source: https://github.com/notofonts/devanagari/blob/main/OFL.txt
+
+License: SIL Open Font License 1.1; see NotoSansDevanagari-LICENSE.txt.
+Files are unmodified. This family supplies Devanagari and Latin glyphs;
+DejaVu Sans remains the fallback for mathematical symbols and missing glyphs.

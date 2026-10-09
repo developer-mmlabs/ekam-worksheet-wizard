@@ -228,7 +228,7 @@ export interface TemplateTheme {
   backgroundColor: string;
   headerColor: string;
   sectionHeaderColor: string;
-  fontFamily: string;
+  fontFamily: string | string[];
   decorativeOpacity: number; // ~0.06 for light backgrounds
   decorationLayout: DecorationLayout;
 }

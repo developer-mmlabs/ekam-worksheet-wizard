@@ -6,7 +6,7 @@ import { WorksheetHeader } from "./components/header";
 import { QuestionSectionBlock } from "./components/section";
 import { SubjectIcon, SUBJECT_DECORATIONS, DEFAULT_DECORATIONS } from "./decorations";
 import { renderToBuffer } from "@react-pdf/renderer";
-import { PDF_FONT, registerPdfFonts } from "./fonts";
+import { registerPdfFonts } from "./fonts";
 
 // A4 dimensions in points (1pt = 1/72 inch)
 const A4_WIDTH = 595.28;
@@ -67,7 +67,7 @@ function WorksheetDocument({ data }: WorksheetDocumentProps) {
     continuationTitle: {
       fontSize: 9,
       fontWeight: "bold",
-      fontFamily: PDF_FONT,
+      fontFamily: theme.fontFamily,
       color: theme.headerColor,
     },
     continuationSubtitle: {

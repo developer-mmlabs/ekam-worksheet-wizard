@@ -14,12 +14,16 @@ import { Font } from "@react-pdf/renderer";
 // ============================================================
 
 export const PDF_FONT = "DejaVuSans";
+export const HINDI_PDF_FONT = "NotoSansDevanagari";
+
+export function pdfFontForSubject(subject: string): string | string[] {
+  return subject === "hindi" ? [HINDI_PDF_FONT, PDF_FONT] : PDF_FONT;
+}
 
 let registered = false;
 
 export function registerPdfFonts() {
   if (registered) return;
-  registered = true;
 
   const fontsDir = join(process.cwd(), "src", "lib", "pdf", "fonts");
 
@@ -32,4 +36,16 @@ export function registerPdfFonts() {
       { src: join(fontsDir, "DejaVuSans-BoldOblique.ttf"), fontWeight: "bold", fontStyle: "italic" },
     ],
   });
+
+  Font.register({
+    family: HINDI_PDF_FONT,
+    fonts: [
+      { src: join(fontsDir, "NotoSansDevanagari-Regular.ttf"), fontWeight: "normal", fontStyle: "normal" },
+      { src: join(fontsDir, "NotoSansDevanagari-Bold.ttf"), fontWeight: "bold", fontStyle: "normal" },
+      // Noto Devanagari has no italic face. Use upright Hindi for inherited italic styles.
+      { src: join(fontsDir, "NotoSansDevanagari-Regular.ttf"), fontWeight: "normal", fontStyle: "italic" },
+      { src: join(fontsDir, "NotoSansDevanagari-Bold.ttf"), fontWeight: "bold", fontStyle: "italic" },
+    ],
+  });
+  registered = true;
 }

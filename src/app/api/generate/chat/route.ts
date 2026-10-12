@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { callLLM } from "@/lib/openrouter";
-import { inngest } from "@/inngest/client";
+import { queueAttempt } from "@/lib/worksheet-attempts";
 import type { WorksheetQuestions, QuestionSection, Question, MCQOption, MatchPair } from "@/types";
 
 interface ChatMessage {
@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
 
     const { data: worksheet, error: fetchError } = await supabaseAdmin
       .from("worksheets")
-      .select("id, status, is_finalized, questions_json")
+      .select("id, status, is_finalized, questions_json, attempt_id")
       .eq("id", worksheetId)
       .single();
 
@@ -262,22 +262,7 @@ RESPONSE FORMAT (pure JSON, no markdown fences):
         return sum + (section.questions?.length ?? 0);
       }, 0);
 
-      const { error: updateError } = await supabaseAdmin
-        .from("worksheets")
-        .update({
-          questions_json: questions,
-          status: "processing",
-        })
-        .eq("id", worksheetId);
-
-      if (updateError) {
-        return NextResponse.json({ error: "Failed to save changes" }, { status: 500 });
-      }
-
-      await inngest.send({
-        name: "worksheet/pdf.regenerate",
-        data: { worksheetId },
-      });
+      await queueAttempt({ id: worksheetId, questions_json: questions }, "pdf", worksheet.attempt_id);
 
       const fullReply = errors.length > 0
         ? `${reply}\n\n(${applied} edit(s) applied, ${errors.length} skipped: ${errors.join("; ")})`

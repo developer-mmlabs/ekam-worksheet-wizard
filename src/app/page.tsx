@@ -618,7 +618,6 @@ export default function GeneratePage() {
   const [showChatPanel, setShowChatPanel] = useState(false);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingGenerationRef = useRef(0);
 
   const selectedGradeObj = useMemo(() => grades.find((g) => g.id === selectedGrade) ?? null, [grades, selectedGrade]);
@@ -663,14 +662,12 @@ export default function GeneratePage() {
   useEffect(() => {
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, []);
 
   const stopPolling = useCallback(() => {
     pollingGenerationRef.current++;
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
   }, []);
 
   useEffect(() => {
@@ -705,21 +702,25 @@ export default function GeneratePage() {
     const pollingGeneration = pollingGenerationRef.current;
     // fast=true for edits/re-renders (poll every 3s), false for full generation (poll every 10s)
     const interval = fast ? 3_000 : 10_000;
-    const timeout = fast ? 120_000 : 900_000;
+    let checking = false;
 
     pollingRef.current = setInterval(async () => {
+      if (checking) return;
+      checking = true;
       try {
-        const res = await fetch(`/api/generate/status?id=${worksheetId}`);
-        if (!res.ok) return;
+        const res = await fetch(`/api/generate/status?id=${worksheetId}`, { signal: AbortSignal.timeout(15_000) });
+        if (!res.ok) throw new Error("Status unavailable");
         const data = await res.json();
         if (pollingGeneration !== pollingGenerationRef.current) return;
+        const since = data.startedAt || data.queuedAt;
+        const elapsed = since ? ` (${Math.max(0, Math.floor((Date.now() - Date.parse(since)) / 60_000))} min)` : "";
         if (data.status === "pending") {
           setQueuePosition(data.queuePosition);
-          setProgress("Waiting in queue...");
+          setProgress(`Waiting for worker${elapsed}`);
         }
         if (data.status === "processing") {
           setQueuePosition(null);
-          setProgress(fast ? "Re-rendering PDF..." : "AI is generating your worksheet...");
+          setProgress(`${data.progress || "Generating worksheet"}${elapsed}`);
         }
         if (data.status === "completed") {
           stopPolling(); setPdfUrl(data.pdfUrl); setActiveSetNumber(data.setNumber);
@@ -728,13 +729,13 @@ export default function GeneratePage() {
         }
         if (data.status === "failed") {
           stopPolling(); setError(data.errorMessage || "Generation failed");
-          setQueuePosition(null); setGenerating(false);
+          setPdfUrl(data.pdfUrl); setQueuePosition(null); setGenerating(false); loadChapterStatus();
         }
-      } catch { /* keep polling */ }
+      } catch {
+        if (pollingGeneration === pollingGenerationRef.current) setProgress("Unable to verify progress. Reconnecting...");
+      } finally { checking = false; }
     }, interval);
-    timeoutRef.current = setTimeout(() => {
-      stopPolling(); setError("Taking too long. Check History page."); setGenerating(false);
-    }, timeout);
+
   }
 
   useEffect(() => {
@@ -792,6 +793,21 @@ export default function GeneratePage() {
     }
   }
 
+  async function handleRetry() {
+    if (!activeWorksheetId || generating) return;
+    setGenerating(true); setError(null); setProgress("Queuing a new attempt...");
+    try {
+      const response = await fetch("/api/generate/retry", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ worksheetId: activeWorksheetId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      loadChapterStatus(); pollForCompletion(data.worksheetId);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to retry"); setGenerating(false);
+    }
+  }
+
   async function handleFinalize() {
     if (!activeWorksheetId || finalizing) return;
     setFinalizing(true);
@@ -834,6 +850,8 @@ export default function GeneratePage() {
     if (activeWorksheetId) { setGenerating(true); setProgress("Re-rendering PDF..."); pollForCompletion(activeWorksheetId, true); }
   }
 
+  const activeSlot = chapterStatus?.worksheets.find((slot) => slot.id === activeWorksheetId);
+  const previousPdf = activeSlot?.status === "failed";
   const allFinalized = chapterStatus?.nextSetNumber === null && (chapterStatus?.worksheets.length ?? 0) > 0;
   const busy = generating || finalizing || openingEditor;
   const canGenerate = hasChapter && schoolId && chapterStatus && !statusLoading && !busy && !allFinalized && totalQuestions > 0;
@@ -981,6 +999,7 @@ export default function GeneratePage() {
             {error && (
               <div role="alert" className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
                 <p>{error}</p>
+                {previousPdf && <button type="button" disabled={busy} onClick={handleRetry} className="mt-1 font-medium underline">Retry previous attempt</button>}
                 {hasChapter && !chapterStatus && !statusLoading && <button type="button" className="mt-1 font-medium underline" onClick={() => { setError(null); loadChapterStatus(); }}>Retry loading worksheet sets</button>}
               </div>
             )}
@@ -999,12 +1018,12 @@ export default function GeneratePage() {
                 {isFinalized ? (
                   <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>Set {activeSetNumber} Finalized</>
                 ) : (
-                  <>Set {activeSetNumber} — Review</>
+                  <>Set {activeSetNumber} — {previousPdf ? "Previous PDF" : "Review"}</>
                 )}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              {!isFinalized && (
+              {!isFinalized && activeSlot?.status === "completed" && (
                 <>
                   <button onClick={() => openModal("chat")} disabled={busy} title="Edit with AI"
                     className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-50 px-3 py-1.5 rounded-lg transition-colors">

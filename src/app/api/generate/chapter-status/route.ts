@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { expireAttempts } from "@/lib/worksheet-attempts";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { ChapterStatusResponse } from "@/types";
 import { chapterArrayFilter, nextWorksheetSet, parseChapterSelection } from "@/lib/worksheet-scope";
@@ -17,6 +18,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "chapterId and schoolId are required" }, { status: 400 });
   }
 
+  try { await expireAttempts(); }
+  catch { return NextResponse.json({ error: "Unable to verify worksheet status" }, { status: 503 }); }
   let query = supabaseAdmin
     .from("worksheets")
     .select("id, set_number, status, is_finalized, pdf_url, created_at")

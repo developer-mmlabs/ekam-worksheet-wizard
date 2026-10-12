@@ -45,6 +45,7 @@ export async function generateImage(prompt: string): Promise<GeneratedImage> {
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
+    signal: AbortSignal.timeout(2 * 60 * 1000),
     headers: {
       Authorization: `Bearer ${OPENROUTER_API_KEY}`,
       "Content-Type": "application/json",

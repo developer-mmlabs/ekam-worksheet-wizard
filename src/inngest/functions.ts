@@ -1,4 +1,5 @@
 import { inngest } from "./client";
+import { errorMessage, expireAttempts, requireAttempt, updateAttempt } from "@/lib/worksheet-attempts";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { generateQuestions } from "@/lib/ai/question-generator";
 import { generateImage, isImageGenAvailable } from "@/lib/image-gen";
@@ -8,29 +9,26 @@ import { defaultConfigValues, getWorksheetConfigSpec } from "@/lib/worksheet-con
 import { chapterTitle, sampleChapterPages } from "@/lib/worksheet-scope";
 import type { Grade, Subject, Chapter, School, GradeBand, WorksheetConfigValues, WorksheetQuestions } from "@/types";
 
-// Shared failure handler — marks a worksheet as failed when the Inngest function crashes or times out
-async function handleFunctionFailure(worksheetId: string, error: unknown) {
-  const message = error instanceof Error ? error.message : "Unknown error";
-  console.error(`[worksheet-gen] Function failed for ${worksheetId}: ${message}`);
-  await supabaseAdmin
-    .from("worksheets")
-    .update({ status: "failed", error_message: message.slice(0, 500) })
-    .eq("id", worksheetId)
-    .in("status", ["pending", "processing"]); // only update if still in-flight
+// Failure events contain serialized errors, not necessarily Error instances.
+async function handleFunctionFailure(worksheetId: string, attemptId: string, error: unknown) {
+  if (attemptId) await updateAttempt(worksheetId, attemptId, "fail", { error_message: errorMessage(error) });
 }
 
 export const processWorksheet = inngest.createFunction(
   {
     id: "process-worksheet",
     triggers: [{ event: "worksheet/generate.requested" }],
+    cancelOn: [{ event: "worksheet/attempt.cancelled", match: "data.attemptId" }],
+    timeouts: { finish: "15m" },
     onFailure: async ({ event }) => {
       const worksheetId = event.data.event.data?.worksheetId as string | undefined;
-      if (worksheetId) await handleFunctionFailure(worksheetId, event.data.error);
+      if (worksheetId) await handleFunctionFailure(worksheetId, event.data.event.data?.attemptId as string, event.data.error);
     },
   },
-  async ({ event, step }) => {
-    const { worksheetId, chapterId, chapterIds: requestedChapterIds, schoolId, config: incomingConfig, sectionOrder, previousQuestions } = event.data as {
+  async ({ event, step, runId }) => {
+    const { worksheetId, attemptId, chapterId, chapterIds: requestedChapterIds, schoolId, config: incomingConfig, sectionOrder, previousQuestions } = event.data as {
       worksheetId: string;
+      attemptId: string;
       chapterId: string;
       chapterIds?: string[];
       schoolId: string;
@@ -42,10 +40,7 @@ export const processWorksheet = inngest.createFunction(
 
     // Step 1: Mark as processing and load all metadata
     const metadata = await step.run("load-metadata", async () => {
-      await supabaseAdmin
-        .from("worksheets")
-        .update({ status: "processing" })
-        .eq("id", worksheetId);
+      await requireAttempt(worksheetId, attemptId, "start", { run_id: runId });
 
       const { data: chapters, error: chapterError } = await supabaseAdmin
         .from("chapters")
@@ -90,6 +85,7 @@ export const processWorksheet = inngest.createFunction(
     };
 
     const questions = await step.run("generate-questions", async () => {
+      await requireAttempt(worksheetId, attemptId, "progress", { progress: "Generating questions" });
       // Pass public URLs directly to the LLM — no need to download images
       const imageUrls = metadata.materials.map((m) => m.file_url as string);
 
@@ -129,10 +125,11 @@ export const processWorksheet = inngest.createFunction(
         const imageResults = await Promise.all(
           imageJobs.map((job, idx) =>
             step.run(`generate-image-${idx}`, async () => {
+              await requireAttempt(worksheetId, attemptId, "progress", { progress: "Creating illustrations" });
               try {
                 const img = await generateImage(job.prompt);
                 const ext = img.mimeType.split("/")[1]?.replace("jpeg", "jpg") || "png";
-                const path = `images/${worksheetId}/case-${job.sectionIdx}-${job.csIdx}.${ext}`;
+                const path = `images/${worksheetId}/${attemptId}/case-${job.sectionIdx}-${job.csIdx}.${ext}`;
                 const { error: uploadError } = await supabaseAdmin.storage
                   .from("worksheets")
                   .upload(path, img.buffer, { contentType: img.mimeType, upsert: true });
@@ -163,6 +160,7 @@ export const processWorksheet = inngest.createFunction(
     // Step 4: Generate PDF, upload, and mark completed
     // (combined to avoid serializing large PDF buffer as step output)
     await step.run("generate-pdf-and-upload", async () => {
+      await requireAttempt(worksheetId, attemptId, "progress", { progress: "Creating PDF" });
       const theme = getTheme(gradeData.band as GradeBand, subjectData.slug, {
         primary: (school as School).primary_color,
         secondary: (school as School).secondary_color,
@@ -190,7 +188,7 @@ export const processWorksheet = inngest.createFunction(
       const subjectSlug = subjectData.slug;
       const chapterLabel = `Ch${chapter.number}-${(chapter.name as string).replace(/[^a-zA-Z0-9]+/g, "-").replace(/-+$/, "")}`;
       const timestamp = new Date().toISOString().replace(/[T:.]/g, "-");
-      const pdfPath = `${schoolId}/${gradeName}/${subjectSlug}/${metadata.chapters.length > 1 ? "Multi-Chapter" : chapterLabel}-WS${worksheetNumber}-${worksheetId}-${timestamp}.pdf`;
+      const pdfPath = `${schoolId}/${gradeName}/${subjectSlug}/${metadata.chapters.length > 1 ? "Multi-Chapter" : chapterLabel}-WS${worksheetNumber}-${worksheetId}-${attemptId}-${timestamp}.pdf`;
 
       const { error: uploadError } = await supabaseAdmin.storage
         .from("worksheets")
@@ -205,16 +203,10 @@ export const processWorksheet = inngest.createFunction(
         pdfUrl = publicUrl;
       }
 
-      const { error: saveError } = await supabaseAdmin
-        .from("worksheets")
-        .update({
-          status: "completed",
-          pdf_url: pdfUrl,
-          questions_json: questions,
-          page_count: Math.min(4, Math.ceil(questions.metadata.totalQuestions / 8)),
-        })
-        .eq("id", worksheetId);
-      if (saveError) throw new Error("Failed to save worksheet PDF.");
+      await requireAttempt(worksheetId, attemptId, "complete", {
+        pdf_url: pdfUrl, questions_json: questions,
+        page_count: Math.min(4, Math.ceil(questions.metadata.totalQuestions / 8)),
+      });
     });
 
     return { worksheetId, status: "completed" };
@@ -229,15 +221,18 @@ export const regeneratePDF = inngest.createFunction(
   {
     id: "regenerate-pdf",
     triggers: [{ event: "worksheet/pdf.regenerate" }],
+    cancelOn: [{ event: "worksheet/attempt.cancelled", match: "data.attemptId" }],
+    timeouts: { finish: "15m" },
     onFailure: async ({ event }) => {
       const worksheetId = event.data.event.data?.worksheetId as string | undefined;
-      if (worksheetId) await handleFunctionFailure(worksheetId, event.data.error);
+      if (worksheetId) await handleFunctionFailure(worksheetId, event.data.event.data?.attemptId as string, event.data.error);
     },
   },
-  async ({ event, step }) => {
-    const { worksheetId } = event.data as { worksheetId: string };
+  async ({ event, step, runId }) => {
+    const { worksheetId, attemptId } = event.data as { worksheetId: string; attemptId: string };
 
     const metadata = await step.run("load-metadata", async () => {
+      await requireAttempt(worksheetId, attemptId, "start", { run_id: runId });
       const { data: worksheet, error: wsError } = await supabaseAdmin
         .from("worksheets")
         .select("*, chapter:chapters(*, subject:subjects(*, grade:grades(*)))")
@@ -266,6 +261,7 @@ export const regeneratePDF = inngest.createFunction(
     const questions = worksheet.questions_json as unknown as WorksheetQuestions;
 
     await step.run("generate-pdf-and-upload", async () => {
+      await requireAttempt(worksheetId, attemptId, "progress", { progress: "Creating PDF" });
       const theme = getTheme(gradeData.band as GradeBand, subjectData.slug, {
         primary: (school as School).primary_color,
         secondary: (school as School).secondary_color,
@@ -288,7 +284,7 @@ export const regeneratePDF = inngest.createFunction(
       const subjectSlug = subjectData.slug;
       const chapterLabel = `Ch${chapter.number}-${chapter.name.replace(/[^a-zA-Z0-9]+/g, "-").replace(/-+$/, "")}`;
       const timestamp = new Date().toISOString().replace(/[T:.]/g, "-");
-      const pdfPath = `${worksheet.school_id}/${gradeName}/${subjectSlug}/${questions.metadata.chapters?.length ? "Multi-Chapter" : chapterLabel}-WS${worksheetNumber}-${worksheetId}-${timestamp}.pdf`;
+      const pdfPath = `${worksheet.school_id}/${gradeName}/${subjectSlug}/${questions.metadata.chapters?.length ? "Multi-Chapter" : chapterLabel}-WS${worksheetNumber}-${worksheetId}-${attemptId}-${timestamp}.pdf`;
 
       const { error: uploadError } = await supabaseAdmin.storage
         .from("worksheets")
@@ -303,17 +299,18 @@ export const regeneratePDF = inngest.createFunction(
         pdfUrl = publicUrl;
       }
 
-      const { error: saveError } = await supabaseAdmin
-        .from("worksheets")
-        .update({
-          status: "completed",
-          pdf_url: pdfUrl,
-          page_count: Math.min(4, Math.ceil(questions.metadata.totalQuestions / 8)),
-        })
-        .eq("id", worksheetId);
-      if (saveError) throw new Error("Failed to save worksheet PDF.");
+      await requireAttempt(worksheetId, attemptId, "complete", {
+        pdf_url: pdfUrl, questions_json: questions,
+        page_count: Math.min(4, Math.ceil(questions.metadata.totalQuestions / 8)),
+      });
     });
 
     return { worksheetId, status: "completed" };
   },
+);
+
+// Expire abandoned attempts even when nobody has the Generate page open.
+export const expireWorksheetAttempts = inngest.createFunction(
+  { id: "expire-worksheet-attempts", triggers: [{ cron: "* * * * *" }] },
+  async () => { await expireAttempts(); },
 );

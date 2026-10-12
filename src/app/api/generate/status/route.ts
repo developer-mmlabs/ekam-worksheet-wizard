@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { expireAttempts } from "@/lib/worksheet-attempts";
 import type { WorksheetStatusResponse } from "@/types";
 
 export async function GET(req: NextRequest) {
@@ -10,47 +11,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing id parameter" }, { status: 400 });
   }
 
+  try { await expireAttempts(); }
+  catch { return NextResponse.json({ error: "Unable to verify progress. Please try again." }, { status: 503 }); }
+
   const { data: worksheet, error } = await supabaseAdmin
     .from("worksheets")
-    .select("id, status, pdf_url, error_message, questions_json, page_count, set_number, is_finalized, created_at")
+    .select("id, status, pdf_url, error_message, questions_json, page_count, set_number, is_finalized, created_at, attempt_id, attempt_kind, queued_at, started_at, deadline_at, last_activity_at, progress")
     .eq("id", worksheetId)
     .single();
 
   if (error || !worksheet) {
     return NextResponse.json({ error: "Worksheet not found" }, { status: 404 });
-  }
-
-  // Compute queue position for pending/processing worksheets
-  // Ignore stale rows older than 15 minutes (likely orphaned)
-  let queuePosition: number | null = null;
-  if (worksheet.status === "pending" || worksheet.status === "processing") {
-    const staleThreshold = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-
-    const { count } = await supabaseAdmin
-      .from("worksheets")
-      .select("id", { count: "exact", head: true })
-      .in("status", ["pending", "processing"])
-      .gt("created_at", staleThreshold)
-      .lt("created_at", worksheet.created_at);
-
-    queuePosition = (count ?? 0) + 1;
-
-    // If this worksheet itself is stale (>15 min in pending/processing), mark it failed
-    if (worksheet.created_at < staleThreshold) {
-      await supabaseAdmin
-        .from("worksheets")
-        .update({ status: "failed", error_message: "Generation timed out" })
-        .eq("id", worksheetId)
-        .in("status", ["pending", "processing"]);
-
-      return NextResponse.json({
-        ...({
-          id: worksheet.id, status: "failed" as const, pdfUrl: null,
-          errorMessage: "Generation timed out", questionCount: null, pageCount: null,
-          setNumber: worksheet.set_number, isFinalized: false, queuePosition: null,
-        }),
-      });
-    }
   }
 
   const response: WorksheetStatusResponse = {
@@ -62,7 +33,14 @@ export async function GET(req: NextRequest) {
     pageCount: worksheet.page_count || null,
     setNumber: worksheet.set_number,
     isFinalized: worksheet.is_finalized,
-    queuePosition,
+    queuePosition: null,
+    attemptId: worksheet.attempt_id,
+    attemptKind: worksheet.attempt_kind,
+    queuedAt: worksheet.queued_at,
+    startedAt: worksheet.started_at,
+    deadlineAt: worksheet.deadline_at,
+    lastActivityAt: worksheet.last_activity_at,
+    progress: worksheet.progress,
     ...(includeQuestions ? { questionsJson: worksheet.questions_json } : {}),
   };
 

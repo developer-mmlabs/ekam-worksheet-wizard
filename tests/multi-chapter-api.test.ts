@@ -30,12 +30,18 @@ test("generation, status and finalization preserve chapter-combination boundarie
     requests.push({ url, method, body });
     const headers = { "content-type": "application/json" };
     const table = url.pathname.split("/").at(-1);
+    if (table === "expire_worksheet_attempts") return Response.json([]);
+    if (table === "queue_worksheet_attempt") {
+      const active = rows.find((r) => r.status === "pending" || r.status === "processing");
+      return Response.json({ claimed: !active, worksheet: active ?? { ...body.p_data, id: "worksheet", attempt_id: "attempt", attempt_request: (body.p_data as Record<string, unknown>).attempt_request } });
+    }
     if (table === "chapters") return new Response(JSON.stringify(chapters), { headers });
     if (table === "schools") return new Response(JSON.stringify({ id: schoolId }), { headers });
     if (table === "source_materials") return new Response(null, { headers: { ...headers, "content-range": materials ? "0-0/1" : "*/0" } });
     if (table === "worksheets") {
       if (method === "POST") return new Response(JSON.stringify({ id: "worksheet" }), { headers });
-      if (method === "DELETE" || method === "PATCH") return new Response(null, { status: 204 });
+      if (method === "PATCH") return Response.json({ id: "worksheet" });
+      if (method === "DELETE") return new Response(null, { status: 204 });
       return new Response(JSON.stringify(url.searchParams.has("id") ? record : rows), { headers });
     }
     throw new Error(`Unexpected external request: ${url.pathname}`);
@@ -44,7 +50,7 @@ test("generation, status and finalization preserve chapter-combination boundarie
   await t.test("multi generation stores canonical IDs and queues the whole selection", async () => {
     const result = await generate(post({ chapterIds: [b, a], schoolId }));
     assert.equal(result.status, 200);
-    const inserted = requests.find((r) => r.method === "POST")!.body;
+    const inserted = requests.find((r) => r.url.pathname.endsWith("queue_worksheet_attempt"))!.body.p_data as Record<string, unknown>;
     assert.deepEqual(inserted.chapter_ids, [a, b]);
     assert.equal(inserted.chapter_id, a);
     assert.deepEqual((events[0] as { data: { chapterIds: string[] } }).data.chapterIds, [a, b]);
@@ -56,7 +62,7 @@ test("generation, status and finalization preserve chapter-combination boundarie
     chapters = makeChapters().slice(0, 1);
     assert.equal((await generate(post({ chapterId: a, schoolId }))).status, 200);
     assert.ok(requests.some((r) => r.url.searchParams.get("chapter_ids") === "is.null"));
-    assert.equal(requests.find((r) => r.method === "POST")!.body.chapter_ids, null);
+    assert.equal((requests.find((r) => r.url.pathname.endsWith("queue_worksheet_attempt"))!.body.p_data as Record<string, unknown>).chapter_ids, null);
     chapters = makeChapters();
   });
 
@@ -75,10 +81,12 @@ test("generation, status and finalization preserve chapter-combination boundarie
 
   await t.test("in-flight work is resumed instead of replaced", async () => {
     requests.length = 0;
+    const eventCount = events.length;
     rows = [{ id: "pending", set_number: 1, is_finalized: false, status: "processing" }];
     const response = await generate(post({ chapterIds: [a, b], schoolId }));
     assert.equal((await response.json()).worksheetId, "pending");
-    assert.equal(requests.some((r) => r.method === "POST" || r.method === "DELETE"), false);
+    assert.equal(events.length, eventCount);
+    assert.equal(requests.some((r) => r.method === "DELETE"), false);
   });
 
   await t.test("the fourth finalized set is rejected", async () => {
@@ -91,7 +99,7 @@ test("generation, status and finalization preserve chapter-combination boundarie
     rows = [{ id: "first", set_number: 1, is_finalized: true }];
     const response = await chapterStatus(new NextRequest(`http://localhost/api/generate/chapter-status?schoolId=${schoolId}&chapterIds=${b},${a}`));
     assert.equal((await response.json()).nextSetNumber, 2);
-    assert.equal(requests[0].url.searchParams.get("chapter_ids"), `eq.{${a},${b}}`);
+    assert.ok(requests.some((r) => r.url.searchParams.get("chapter_ids") === `eq.{${a},${b}}`));
   });
 
   await t.test("finalize advances only the selected combination", async () => {

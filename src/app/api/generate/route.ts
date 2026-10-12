@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { inngest } from "@/inngest/client";
+import { expireAttempts, queueAttempt } from "@/lib/worksheet-attempts";
 import { defaultConfigValues, getWorksheetConfigSpec } from "@/lib/worksheet-configs";
 import type { GenerateRequest, WorksheetConfigValues, WorksheetQuestions } from "@/types";
 import { flattenQuestionsForDedup } from "@/types";
@@ -69,6 +69,8 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    await expireAttempts();
+
     // Determine set_number: find finalized worksheets and any pending/in-progress drafts
     let existingQuery = supabaseAdmin
       .from("worksheets")
@@ -90,18 +92,6 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Delete any existing non-finalized draft for this set_number (regeneration)
-    const existingDraft = (existingWorksheets ?? []).find(
-      (w) => w.set_number === setNumber && !w.is_finalized
-    );
-    if (existingDraft) {
-      if (existingDraft.status === "pending" || existingDraft.status === "processing") {
-        return NextResponse.json({ success: true, worksheetId: existingDraft.id, setNumber });
-      }
-      const { error: deleteError } = await supabaseAdmin.from("worksheets").delete().eq("id", existingDraft.id).eq("is_finalized", false);
-      if (deleteError) throw new Error("Failed to replace the existing draft.");
-    }
-
     // Gather previously used questions from finalized worksheets for dedup
     const previousQuestions: string[] = [];
     for (const fw of finalized) {
@@ -111,43 +101,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { data: worksheet, error: insertError } = await supabaseAdmin
-      .from("worksheets")
-      .insert({
-        chapter_id: chapterId,
-        chapter_ids: multi ? chapterIds : null,
-        school_id: schoolId,
-        status: "pending",
-        questions_json: multi ? { metadata: { chapters: chapters.map(({ id, number, name }) => ({ id, number, name })) } } : {},
-        page_count: 0,
-        set_number: setNumber,
-        is_finalized: false,
-      })
-      .select("id")
-      .single();
-
-    if (insertError || !worksheet) {
-      return NextResponse.json(
-        { success: false, error: insertError?.code === "23505" ? "A worksheet for this selection is already being generated. Select the chapters again to refresh its status." : "Failed to create worksheet record" },
-        { status: insertError?.code === "23505" ? 409 : 500 }
-      );
-    }
-
-    try { await inngest.send({
-      name: "worksheet/generate.requested",
-      data: {
-        worksheetId: worksheet.id,
-        chapterId,
-        chapterIds,
-        schoolId,
-        config,
-        sectionOrder,
-        previousQuestions,
-      },
-    }); } catch {
-      await supabaseAdmin.from("worksheets").update({ status: "failed", error_message: "Unable to queue generation. Please try again." }).eq("id", worksheet.id);
-      throw new Error("Unable to queue generation. Please try again.");
-    }
+    const worksheet = await queueAttempt({
+      chapter_id: chapterId, chapter_ids: multi ? chapterIds : null, school_id: schoolId,
+      set_number: setNumber,
+      questions_json: multi ? { metadata: { chapters: chapters.map(({ id, number, name }) => ({ id, number, name })) } } : {},
+      attempt_request: { chapterId, chapterIds, schoolId, config, sectionOrder, previousQuestions },
+    }, "generate");
 
     return NextResponse.json({ success: true, worksheetId: worksheet.id, setNumber });
 

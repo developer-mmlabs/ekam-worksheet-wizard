@@ -37,3 +37,33 @@ npm run dev:queue -- --no-discovery -u http://localhost:3030/api/inngest
 
 These commands are for local development. Vercel uses the production build and
 Inngest Cloud; it does not run the local development queue.
+
+## Generation attempts
+
+Apply `supabase/migrations/20261012_worksheet_attempts.sql` before running the updated
+workers. Stop older workers during rollout; they do not enforce attempt IDs.
+The migration keeps completed worksheets and PDFs and marks untracked legacy
+pending/processing rows as failed so they can be retried explicitly.
+
+With the existing admin `exec_sql` RPC configured, validate (all changes rolled back)
+and apply using:
+
+```powershell
+node --env-file=.env.local --import tsx scripts/migrate-worksheet-attempts.ts --test
+node --env-file=.env.local --import tsx scripts/migrate-worksheet-attempts.ts --apply
+```
+
+Otherwise run the migration in the Supabase SQL editor. These SQL functions are
+restricted to the service role. Each attempt has its own identity and a 15-minute
+queue deadline. When the worker starts, it receives a separate 15-minute execution
+deadline. Inngest step retries retain that deadline; an explicit retry starts a
+new attempt. Status requests and a minute-by-minute Inngest cleanup job expire
+overdue attempts. Progress timestamps describe completed stage transitions,
+not a claim that an external AI request is still responsive.
+
+Timeout cancellation is best-effort; an already-running provider request may
+continue, but a superseded or expired attempt cannot replace the current PDF.
+Model requests have a 12-minute request timeout (illustrations: 2 minutes);
+provider and hosting limits can still fail earlier. History refreshes every
+10 seconds and offers Retry for tracked failures. Older failures without saved
+request settings must be retried from Generate with the chapters selected again.

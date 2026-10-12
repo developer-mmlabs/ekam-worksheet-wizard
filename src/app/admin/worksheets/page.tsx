@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase/client";
 import type { WorksheetStatus, WorksheetQuestions } from "@/types";
 import { chapterTitle } from "@/lib/worksheet-scope";
 
@@ -11,6 +10,10 @@ interface WorksheetRow {
   pdf_url: string | null;
   page_count: number;
   created_at: string;
+  is_finalized: boolean;
+  error_message: string | null;
+  progress: string | null;
+  attempt_kind: string | null;
   metadata?: WorksheetQuestions["metadata"];
   chapter: {
     number: number;
@@ -34,6 +37,8 @@ const STATUS_STYLES: Record<WorksheetStatus, { bg: string; text: string; label: 
 export default function WorksheetsPage() {
   const [worksheets, setWorksheets] = useState<WorksheetRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
   const [filterGrade, setFilterGrade] = useState("");
   const [filterSubject, setFilterSubject] = useState("");
   const [grades, setGrades] = useState<string[]>([]);
@@ -42,22 +47,21 @@ export default function WorksheetsPage() {
 
   useEffect(() => {
     loadWorksheets();
+    const timer = setInterval(() => { loadWorksheets(); }, 10_000);
+    return () => clearInterval(timer);
   }, []);
 
   async function loadWorksheets() {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("worksheets")
-      .select("id, status, pdf_url, page_count, created_at, metadata:questions_json->metadata, chapter:chapters(number, name, subject:subjects(name, grade:grades(name)))")
-      .order("created_at", { ascending: false });
-
-    if (error || !data) {
-      setLoading(false);
-      return;
+    let rows: WorksheetRow[];
+    try {
+      const response = await fetch("/api/worksheets", { signal: AbortSignal.timeout(8000), cache: "no-store" });
+      if (!response.ok) throw new Error("Unable to verify worksheet status. Retrying automatically...");
+      rows = await response.json();
+      setError(null); setWorksheets(rows);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to load worksheets");
+      setLoading(false); return;
     }
-
-    const rows = data as unknown as WorksheetRow[];
-    setWorksheets(rows);
 
     // Extract unique grades and subjects for filters
     const gradeSet = new Set<string>();
@@ -69,6 +73,19 @@ export default function WorksheetsPage() {
     setGrades(Array.from(gradeSet).sort());
     setSubjects(Array.from(subjectSet).sort());
     setLoading(false);
+  }
+
+  async function retry(id: string) {
+    setRetrying(id);
+    try {
+      const response = await fetch("/api/generate/retry", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ worksheetId: id }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      await loadWorksheets();
+    } catch (error) { setError(error instanceof Error ? error.message : "Unable to retry"); }
+    finally { setRetrying(null); }
   }
 
   const filtered = worksheets.filter((w) => {
@@ -96,6 +113,8 @@ export default function WorksheetsPage() {
         </div>
         <span className="text-sm text-gray-400">{filtered.length} worksheet{filtered.length !== 1 ? "s" : ""}</span>
       </div>
+
+      {error && <p role="alert" className="mb-4 text-sm text-red-600">{error}</p>}
 
       {/* Filters */}
       <div className="flex gap-4 mb-6">
@@ -168,13 +187,13 @@ export default function WorksheetsPage() {
                       {formatDate(w.created_at)}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {w.status === "completed" && w.pdf_url && (
+                      {w.pdf_url && (
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => setPreviewUrl(previewUrl === w.pdf_url ? null : w.pdf_url)}
                             className="text-blue-600 hover:text-blue-800 text-sm font-medium"
                           >
-                            {previewUrl === w.pdf_url ? "Close" : "Preview"}
+                            {previewUrl === w.pdf_url ? "Close" : w.status === "completed" ? "Preview" : "Previous PDF"}
                           </button>
                           <a
                             href={w.pdf_url}
@@ -188,11 +207,17 @@ export default function WorksheetsPage() {
                           </a>
                         </div>
                       )}
-                      {w.status === "processing" && (
-                        <span className="text-xs text-blue-500">In progress...</span>
+                      {(w.status === "processing" || w.status === "pending") && (
+                        <span className="text-xs text-blue-500">{w.progress || "Waiting for worker"}</span>
                       )}
                       {w.status === "failed" && (
-                        <span className="text-xs text-red-500">Error</span>
+                        <div className="text-xs text-red-500">
+                          <p>{w.error_message || "Generation failed"}</p>
+                          {!w.is_finalized && (w.attempt_kind ?
+                            <button disabled={retrying !== null} onClick={() => retry(w.id)} className="mt-2 text-blue-600 underline">
+                              {retrying === w.id ? "Queuing..." : "Retry"}
+                            </button> : <a href="/" className="text-blue-600 underline">Open Generate to retry</a>)}
+                        </div>
                       )}
                     </td>
                   </tr>

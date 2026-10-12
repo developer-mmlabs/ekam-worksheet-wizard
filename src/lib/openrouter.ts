@@ -31,6 +31,8 @@ interface OpenRouterResponse {
 export async function callLLM(messages: Message[]): Promise<string> {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
+    // Leave time for PDF/storage work before the attempt's 15-minute deadline.
+    signal: AbortSignal.timeout(12 * 60 * 1000),
     headers: {
       Authorization: `Bearer ${OPENROUTER_API_KEY}`,
       "Content-Type": "application/json",

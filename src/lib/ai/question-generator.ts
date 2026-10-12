@@ -985,7 +985,7 @@ ${numbered}
 </previously_used>`;
 }
 
-function buildSystemPrompt(ctx: GenerationContext, cfg: WorksheetConfigValues, sectionOrder?: string[], previousQuestions?: string[]): string {
+export function buildSystemPrompt(ctx: GenerationContext, cfg: WorksheetConfigValues, sectionOrder?: string[], previousQuestions?: string[]): string {
   let prompt: string;
   if (ctx.gradeNumber === 10) {
     switch (ctx.subjectSlug) {

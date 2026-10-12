@@ -54,6 +54,8 @@ test("generation, status and finalization preserve chapter-combination boundarie
     assert.deepEqual(inserted.chapter_ids, [a, b]);
     assert.equal(inserted.chapter_id, a);
     assert.deepEqual((events[0] as { data: { chapterIds: string[] } }).data.chapterIds, [a, b]);
+    assert.equal((events[0] as any).name, "worksheet/multi.generate.requested");
+    assert.match((events[0] as any).data.generationId, /^[0-9a-f-]{36}$/);
     assert.ok(requests.some((r) => r.url.searchParams.get("chapter_ids") === `eq.{${a},${b}}`));
   });
 
@@ -61,6 +63,7 @@ test("generation, status and finalization preserve chapter-combination boundarie
     requests.length = 0;
     chapters = makeChapters().slice(0, 1);
     assert.equal((await generate(post({ chapterId: a, schoolId }))).status, 200);
+    assert.equal((events.at(-1) as any).name, "worksheet/generate.requested");
     assert.ok(requests.some((r) => r.url.searchParams.get("chapter_ids") === "is.null"));
     assert.equal((requests.find((r) => r.url.pathname.endsWith("queue_worksheet_attempt"))!.body.p_data as Record<string, unknown>).chapter_ids, null);
     chapters = makeChapters();

@@ -48,7 +48,8 @@ export async function queueAttempt(data: Record<string, unknown>, kind: "generat
   try {
     await inngest.send({
       id: worksheet.attempt_id,
-      name: kind === "pdf" ? "worksheet/pdf.regenerate" : "worksheet/generate.requested",
+      name: kind === "pdf" ? "worksheet/pdf.regenerate"
+        : worksheet.attempt_request?.chapterIds?.length > 1 ? "worksheet/multi.generate.requested" : "worksheet/generate.requested",
       data: { ...(kind === "generate" ? worksheet.attempt_request : {}), worksheetId: worksheet.id, attemptId: worksheet.attempt_id },
     });
   } catch (error) {

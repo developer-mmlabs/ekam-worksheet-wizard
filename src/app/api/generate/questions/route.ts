@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { inngest } from "@/inngest/client";
+import { queueAttempt } from "@/lib/worksheet-attempts";
 import type { QuestionEditRequest, WorksheetQuestions } from "@/types";
 
 export async function PATCH(req: NextRequest) {
@@ -19,7 +19,7 @@ export async function PATCH(req: NextRequest) {
     // Load the worksheet
     const { data: worksheet, error: fetchError } = await supabaseAdmin
       .from("worksheets")
-      .select("id, status, is_finalized, questions_json")
+      .select("id, status, is_finalized, questions_json, attempt_id")
       .eq("id", worksheetId)
       .single();
 
@@ -57,24 +57,7 @@ export async function PATCH(req: NextRequest) {
       Object.assign(question, update.changes);
     }
 
-    // Save updated questions_json and set status to processing for PDF re-render
-    const { error: updateError } = await supabaseAdmin
-      .from("worksheets")
-      .update({
-        questions_json: questions,
-        status: "processing",
-      })
-      .eq("id", worksheetId);
-
-    if (updateError) {
-      return NextResponse.json({ error: "Failed to save question changes" }, { status: 500 });
-    }
-
-    // Trigger PDF re-render
-    await inngest.send({
-      name: "worksheet/pdf.regenerate",
-      data: { worksheetId },
-    });
+    await queueAttempt({ id: worksheetId, questions_json: questions }, "pdf", worksheet.attempt_id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
     const { data: worksheet, error: fetchError } = await supabaseAdmin
       .from("worksheets")
-      .select("id, status, is_finalized, chapter_id, chapter_ids, school_id, set_number, pdf_url")
+      .select("id, status, is_finalized, chapter_id, chapter_ids, school_id, set_number, pdf_url, attempt_id")
       .eq("id", worksheetId)
       .single();
 
@@ -32,12 +32,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Finalize
-    const { error: updateError } = await supabaseAdmin
+    let finalizeQuery = supabaseAdmin
       .from("worksheets")
       .update({ is_finalized: true, finalized_at: new Date().toISOString() })
-      .eq("id", worksheetId);
+      .eq("id", worksheetId).eq("status", "completed").eq("is_finalized", false);
+    finalizeQuery = worksheet.attempt_id ? finalizeQuery.eq("attempt_id", worksheet.attempt_id) : finalizeQuery.is("attempt_id", null);
+    const { data: saved, error: updateError } = await finalizeQuery.select("id").maybeSingle();
 
-    if (updateError) {
+    if (updateError || !saved) {
       return NextResponse.json({ success: false, error: "Failed to finalize worksheet" }, { status: 500 });
     }
 

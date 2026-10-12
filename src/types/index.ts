@@ -283,6 +283,13 @@ export interface GenerateResponse {
 }
 
 export interface WorksheetStatusResponse {
+  attemptId?: string;
+  attemptKind?: "generate" | "pdf";
+  queuedAt?: string;
+  startedAt?: string;
+  deadlineAt?: string;
+  lastActivityAt?: string;
+  progress?: string;
   id: string;
   status: WorksheetStatus;
   pdfUrl: string | null;

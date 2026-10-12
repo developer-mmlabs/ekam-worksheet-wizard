@@ -1,5 +1,5 @@
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY!;
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-3-flash-preview";
+export const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-3-flash-preview";
 
 interface Message {
   role: "system" | "user" | "assistant";
@@ -22,17 +22,18 @@ interface ImagePart {
 
 interface OpenRouterResponse {
   choices: {
+    finish_reason?: string;
     message: {
       content: string;
     };
   }[];
 }
 
-export async function callLLM(messages: Message[]): Promise<string> {
+export async function callLLM(messages: Message[], options?: { timeoutMs: number; maxTokens: number }): Promise<string> {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     // Leave time for PDF/storage work before the attempt's 15-minute deadline.
-    signal: AbortSignal.timeout(12 * 60 * 1000),
+    signal: AbortSignal.timeout(options?.timeoutMs ?? 12 * 60 * 1000),
     headers: {
       Authorization: `Bearer ${OPENROUTER_API_KEY}`,
       "Content-Type": "application/json",
@@ -42,7 +43,7 @@ export async function callLLM(messages: Message[]): Promise<string> {
     body: JSON.stringify({
       model: OPENROUTER_MODEL,
       messages,
-      max_tokens: 16000,
+      max_tokens: options?.maxTokens ?? 16000,
       temperature: 0.3,
     }),
   });
@@ -53,6 +54,9 @@ export async function callLLM(messages: Message[]): Promise<string> {
   }
 
   const data: OpenRouterResponse = await response.json();
+  if (options && (data.choices?.[0]?.finish_reason === "length" || !data.choices?.[0]?.message?.content)) {
+    throw new Error("AI response was incomplete. Retry this step.");
+  }
   return data.choices[0].message.content;
 }
 

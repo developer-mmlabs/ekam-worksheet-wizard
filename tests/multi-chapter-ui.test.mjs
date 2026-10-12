@@ -78,9 +78,9 @@ test("History refreshes status, retries failures and retains the previous PDF", 
     await page.clock.install();
     let status = "failed", retryCount = 0;
     await page.route("**/api/worksheets", (route) => route.fulfill({ json: [{
-      id: "worksheet", status, pdf_url: "about:blank", is_finalized: false, attempt_kind: "pdf",
-      error_message: status === "failed" ? "Previous attempt exceeded its deadline" : null,
-      progress: "Waiting for worker", created_at: "2020-01-01T00:00:00Z",
+      id: "worksheet", status, pdf_url: "about:blank", is_finalized: false, attempt_kind: "generate",
+      error_message: status === "failed" ? "2/3 chapters complete; Ch 3 failed. Saved work is kept; Retry resumes it." : null,
+      progress: status === "processing" ? "2/3 chapters complete; Ch 3: questions 1/2" : "Waiting for worker", created_at: "2020-01-01T00:00:00Z",
       chapter: { number: 1, name: "Plants", subject: { name: "Science", grade: { name: "Grade 6" } } },
     }] }));
     await page.route("**/api/generate/retry", (route) => {
@@ -89,12 +89,15 @@ test("History refreshes status, retries failures and retains the previous PDF", 
       return route.fulfill({ json: { success: true, worksheetId: "worksheet" } });
     });
     await page.goto((process.env.UI_TEST_URL ?? "http://localhost:3001") + "/admin/worksheets");
-    await page.getByText("Previous attempt exceeded its deadline").waitFor();
+    await page.getByText("2/3 chapters complete; Ch 3 failed. Saved work is kept; Retry resumes it.").waitFor();
     assert.equal(await page.getByRole("button", { name: "Previous PDF" }).isVisible(), true);
     await page.getByRole("button", { name: "Retry", exact: true }).click();
     await page.getByText("Pending", { exact: true }).waitFor();
     assert.equal(retryCount, 1);
     assert.equal(await page.getByRole("button", { name: "Retry", exact: true }).count(), 0);
+    status = "processing";
+    await page.clock.fastForward(10000);
+    await page.getByText("2/3 chapters complete; Ch 3: questions 1/2").waitFor();
     status = "completed";
     await page.clock.fastForward(10000);
     await page.getByText("Completed", { exact: true }).waitFor();

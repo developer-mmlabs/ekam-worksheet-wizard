@@ -1,12 +1,15 @@
 import { inngest } from "./client";
+import type { GetFunctionInput } from "inngest";
 import { errorMessage, expireAttempts, requireAttempt, updateAttempt } from "@/lib/worksheet-attempts";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { generateQuestions } from "@/lib/ai/question-generator";
+import { generateMultiChapter, multiDependencies } from "@/lib/ai/multi-chapter-generator";
+import { controlOrder, planBatches } from "@/lib/ai/multi-chapter-plan";
 import { generateImage, isImageGenAvailable } from "@/lib/image-gen";
 import { generateWorksheetPDF } from "@/lib/pdf/generator";
 import { getTheme } from "@/lib/pdf/templates/themes";
 import { defaultConfigValues, getWorksheetConfigSpec } from "@/lib/worksheet-configs";
-import { chapterTitle, sampleChapterPages } from "@/lib/worksheet-scope";
+import { chapterTitle } from "@/lib/worksheet-scope";
 import type { Grade, Subject, Chapter, School, GradeBand, WorksheetConfigValues, WorksheetQuestions } from "@/types";
 
 // Failure events contain serialized errors, not necessarily Error instances.
@@ -14,21 +17,11 @@ async function handleFunctionFailure(worksheetId: string, attemptId: string, err
   if (attemptId) await updateAttempt(worksheetId, attemptId, "fail", { error_message: errorMessage(error) });
 }
 
-export const processWorksheet = inngest.createFunction(
-  {
-    id: "process-worksheet",
-    triggers: [{ event: "worksheet/generate.requested" }],
-    cancelOn: [{ event: "worksheet/attempt.cancelled", match: "data.attemptId" }],
-    timeouts: { finish: "15m" },
-    onFailure: async ({ event }) => {
-      const worksheetId = event.data.event.data?.worksheetId as string | undefined;
-      if (worksheetId) await handleFunctionFailure(worksheetId, event.data.event.data?.attemptId as string, event.data.error);
-    },
-  },
-  async ({ event, step, runId }) => {
-    const { worksheetId, attemptId, chapterId, chapterIds: requestedChapterIds, schoolId, config: incomingConfig, sectionOrder, previousQuestions } = event.data as {
+async function processGeneration({ event, step, runId }: GetFunctionInput<typeof inngest>) {
+    const { worksheetId, attemptId, generationId, chapterId, chapterIds: requestedChapterIds, schoolId, config: incomingConfig, sectionOrder, previousQuestions } = event.data as {
       worksheetId: string;
       attemptId: string;
+      generationId?: string;
       chapterId: string;
       chapterIds?: string[];
       schoolId: string;
@@ -40,7 +33,8 @@ export const processWorksheet = inngest.createFunction(
 
     // Step 1: Mark as processing and load all metadata
     const metadata = await step.run("load-metadata", async () => {
-      await requireAttempt(worksheetId, attemptId, "start", { run_id: runId });
+      await requireAttempt(worksheetId, attemptId, chapterIds.length > 1 ? "progress" : "start",
+        { run_id: runId, progress: "Loading chapter sources" });
 
       const { data: chapters, error: chapterError } = await supabaseAdmin
         .from("chapters")
@@ -62,14 +56,22 @@ export const processWorksheet = inngest.createFunction(
 
       const materialGroups = await Promise.all(chapters.map(async (item) => {
         const { data, error } = await supabaseAdmin.from("source_materials").select("*")
-          .eq("chapter_id", item.id).order("type").order("page_number");
+          .eq("chapter_id", item.id).order("type").order("page_number").order("id");
         if (error || !data?.length) throw new Error(`No source pages available for Ch ${item.number}: ${item.name}.`);
         return data;
       }));
-      const sampledGroups = chapters.length > 1 ? sampleChapterPages(materialGroups) : materialGroups;
-      const materials = sampledGroups.flatMap((pages, i) => pages.map((page) => ({
+      const materials = materialGroups.flatMap((pages, i) => pages.map((page) => ({
         ...page, sourceLabel: `Ch ${chapters[i].number}: ${chapters[i].name} - Page ${page.page_number}`,
       })));
+      if (chapters.length > 1) {
+        const subject = chapter.subject as unknown as Subject & { grade: Grade };
+        const context = { gradeNumber: subject.grade.number, subjectSlug: subject.slug,
+          gradeName: subject.grade.name, subjectName: subject.name, chapterName: chapter.name };
+        const config = { ...defaultConfigValues(getWorksheetConfigSpec(subject.grade.number, subject.slug)), ...incomingConfig };
+        const batches = planBatches(chapters.length, config, controlOrder(context, sectionOrder));
+        await requireAttempt(worksheetId, attemptId, "start", { run_id: runId,
+          execution_minutes: Math.min(120, Math.max(20, materials.length * 2 + batches.length * 3 + 10)) });
+      }
       return { chapter, chapters: chapters.map(({ id, number, name }) => ({ id, number, name })), school, materials };
     });
 
@@ -84,7 +86,16 @@ export const processWorksheet = inngest.createFunction(
       ...incomingConfig,
     };
 
-    const questions = await step.run("generate-questions", async () => {
+    const multiOptions = {
+      worksheetId, attemptId, generationId: generationId ?? worksheetId,
+      context: { gradeNumber: gradeData.number, gradeName: gradeData.name, subjectSlug: subjectData.slug,
+        subjectName: subjectData.name, chapterName: chapterTitle(metadata.chapters), chapters: metadata.chapters },
+      config, sectionOrder, previousQuestions, pages: metadata.materials,
+    };
+    const questions = metadata.chapters.length > 1
+      ? await generateMultiChapter(multiOptions, multiDependencies(multiOptions,
+        async <T>(id: string, work: () => Promise<T>) => await step.run(id, work) as T))
+      : await step.run("generate-questions", async () => {
       await requireAttempt(worksheetId, attemptId, "progress", { progress: "Generating questions" });
       // Pass public URLs directly to the LLM — no need to download images
       const imageUrls = metadata.materials.map((m) => m.file_url as string);
@@ -160,7 +171,8 @@ export const processWorksheet = inngest.createFunction(
     // Step 4: Generate PDF, upload, and mark completed
     // (combined to avoid serializing large PDF buffer as step output)
     await step.run("generate-pdf-and-upload", async () => {
-      await requireAttempt(worksheetId, attemptId, "progress", { progress: "Creating PDF" });
+      await requireAttempt(worksheetId, attemptId, "progress", { progress: metadata.chapters.length > 1
+        ? `${metadata.chapters.length}/${metadata.chapters.length} chapters complete; creating PDF` : "Creating PDF" });
       const theme = getTheme(gradeData.band as GradeBand, subjectData.slug, {
         primary: (school as School).primary_color,
         secondary: (school as School).secondary_color,
@@ -210,8 +222,25 @@ export const processWorksheet = inngest.createFunction(
     });
 
     return { worksheetId, status: "completed" };
-  },
-);
+}
+
+const generationFailure = async ({ event }: { event: { data: { event: { data: { worksheetId?: string; attemptId?: string } }; error: unknown } } }) => {
+  const data = event.data.event.data;
+  if (data.worksheetId) await handleFunctionFailure(data.worksheetId, data.attemptId!, event.data.error);
+};
+
+export const processWorksheet = inngest.createFunction({
+  id: "process-worksheet", triggers: [{ event: "worksheet/generate.requested" }],
+  cancelOn: [{ event: "worksheet/attempt.cancelled", match: "data.attemptId" }],
+  timeouts: { finish: "15m" }, onFailure: generationFailure,
+}, processGeneration);
+
+export const processMultiWorksheet = inngest.createFunction({
+  id: "process-multi-worksheet", triggers: [{ event: "worksheet/multi.generate.requested" }],
+  cancelOn: [{ event: "worksheet/attempt.cancelled", match: "data.attemptId" }],
+  retries: 2, checkpointing: false, // One bounded AI operation per HTTP invocation on Vercel.
+  timeouts: { finish: "2h" }, onFailure: generationFailure,
+}, processGeneration);
 
 // ============================================================
 // PDF Regeneration (after question edits — skips AI generation)

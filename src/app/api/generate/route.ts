@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
+import { MAX_MULTI_PAGES, planBatches } from "@/lib/ai/multi-chapter-plan";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { expireAttempts, queueAttempt } from "@/lib/worksheet-attempts";
 import { defaultConfigValues, getWorksheetConfigSpec } from "@/lib/worksheet-configs";
@@ -61,6 +63,15 @@ export async function POST(req: NextRequest) {
       if (error) throw new Error("Failed to check source materials.");
       return { chapter: item, count };
     }));
+    if (multi) {
+      try {
+        const batches = planBatches(chapterIds.length, config, spec.controls.map((c) => c.id));
+        const pageCount = materialChecks.reduce((sum, item) => sum + (item.count ?? 0), 0);
+        if (pageCount > MAX_MULTI_PAGES || pageCount + batches.length > 800) throw new Error("Choose fewer chapters: one worksheet supports up to 400 source pages.");
+      } catch (error) {
+        return NextResponse.json({ success: false, error: (error as Error).message }, { status: 400 });
+      }
+    }
     const missing = materialChecks.filter((item) => !item.count);
     if (missing.length) {
       return NextResponse.json({
@@ -105,7 +116,8 @@ export async function POST(req: NextRequest) {
       chapter_id: chapterId, chapter_ids: multi ? chapterIds : null, school_id: schoolId,
       set_number: setNumber,
       questions_json: multi ? { metadata: { chapters: chapters.map(({ id, number, name }) => ({ id, number, name })) } } : {},
-      attempt_request: { chapterId, chapterIds, schoolId, config, sectionOrder, previousQuestions },
+      attempt_request: { chapterId, chapterIds, schoolId, config, sectionOrder, previousQuestions,
+        ...(multi ? { generationId: randomUUID() } : {}) },
     }, "generate");
 
     return NextResponse.json({ success: true, worksheetId: worksheet.id, setNumber });

@@ -34,6 +34,20 @@ const STATUS_STYLES: Record<WorksheetStatus, { bg: string; text: string; label: 
   failed: { bg: "bg-red-50", text: "text-red-700", label: "Failed" },
 };
 
+function failureMessage(worksheet: WorksheetRow): string {
+  const message = worksheet.error_message || "Generation failed. Please try again.";
+  const providerError = /OpenRouter API error \((\d+)\)/.exec(message);
+  if (!providerError) return message;
+
+  // Keep stored diagnostics intact, but never render the provider's raw JSON.
+  const savedProgress = message.slice(0, providerError.index).trim();
+  const canRetry = !worksheet.is_finalized && !!worksheet.attempt_kind;
+  const guidance = providerError[1] === "429"
+    ? `AI provider is temporarily busy. ${canRetry ? "Wait a few minutes, then click Retry to resume." : "Please try again later."}`
+    : "The AI provider could not complete this request. Please try again later; if it continues, contact your administrator.";
+  return [guidance, savedProgress].filter(Boolean).join(" ");
+}
+
 export default function WorksheetsPage() {
   const [worksheets, setWorksheets] = useState<WorksheetRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,7 +119,7 @@ export default function WorksheetsPage() {
   }
 
   return (
-    <div>
+    <div className="min-w-0 px-4 py-6 sm:px-6">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Worksheet History</h1>
@@ -148,8 +162,16 @@ export default function WorksheetsPage() {
           <p className="text-gray-400">No worksheets found</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+          <table className="w-full min-w-[960px] table-fixed [&_td]:[overflow-wrap:anywhere]">
+            <colgroup>
+              <col className="w-[25%]" />
+              <col className="w-[12%]" />
+              <col className="w-[8%]" />
+              <col className="w-[11%]" />
+              <col className="w-[14%]" />
+              <col className="w-[30%]" />
+            </colgroup>
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">Chapter</th>
@@ -188,7 +210,7 @@ export default function WorksheetsPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       {w.pdf_url && (
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                           <button
                             onClick={() => setPreviewUrl(previewUrl === w.pdf_url ? null : w.pdf_url)}
                             className="text-blue-600 hover:text-blue-800 text-sm font-medium"
@@ -211,10 +233,10 @@ export default function WorksheetsPage() {
                         <span className="text-xs text-blue-500">{w.progress || "Waiting for worker"}</span>
                       )}
                       {w.status === "failed" && (
-                        <div className="text-xs text-red-500">
-                          <p>{w.error_message || "Generation failed"}</p>
+                        <div className="text-sm text-red-700">
+                          <p className="leading-relaxed">{failureMessage(w)}</p>
                           {!w.is_finalized && (w.attempt_kind ?
-                            <button disabled={retrying !== null} onClick={() => retry(w.id)} className="mt-2 text-blue-600 underline">
+                            <button type="button" disabled={retrying !== null} onClick={() => retry(w.id)} className="mt-3 inline-flex min-h-10 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
                               {retrying === w.id ? "Queuing..." : "Retry"}
                             </button> : <a href="/" className="text-blue-600 underline">Open Generate to retry</a>)}
                         </div>
